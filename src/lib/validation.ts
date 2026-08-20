@@ -25,8 +25,13 @@ export function validateCampaign(d: CampaignDraft, now: Date): ValidationError[]
   if (d.agendar) {
     if (!d.enviar_em) {
       errors.push({ field: 'enviar_em', message: 'Escolha a data e hora.' });
-    } else if (new Date(d.enviar_em).getTime() <= now.getTime()) {
-      errors.push({ field: 'enviar_em', message: 'A data precisa ser no futuro.' });
+    } else {
+      const t = new Date(d.enviar_em).getTime();
+      if (Number.isNaN(t)) {
+        errors.push({ field: 'enviar_em', message: 'Data inválida.' });
+      } else if (t <= now.getTime()) {
+        errors.push({ field: 'enviar_em', message: 'A data precisa ser no futuro.' });
+      }
     }
   }
   return errors;

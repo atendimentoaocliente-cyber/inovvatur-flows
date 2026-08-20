@@ -23,7 +23,7 @@ export function buildCampaignRow(
   return {
     nome: draft.nome.trim(),
     tipo: draft.tipo,
-    mensagem: draft.mensagem,
+    mensagem: draft.mensagem.trim(),
     midia_url: draft.midia_url,
     mencionar_todos: draft.mencionar_todos,
     audience_id: audienceId,

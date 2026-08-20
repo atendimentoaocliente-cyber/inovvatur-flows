@@ -1,3 +1,5 @@
+// Sequential {{key}} substitution. Inputs are controlled (e.g. a formatted date),
+// so a value that itself contains another placeholder's literal text is an accepted edge case.
 export function renderMessage(template: string, vars: Record<string, string>): string {
   return Object.entries(vars).reduce(
     (out, [key, value]) => out.split(`{{${key}}}`).join(value),

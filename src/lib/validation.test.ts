@@ -27,4 +27,7 @@ describe('validateCampaign', () => {
   it('does not require a date when sending now', () => {
     expect(validateCampaign({ ...base, agendar: false, enviar_em: null }, now)).toEqual([]);
   });
+  it('rejects a malformed date when scheduling', () => {
+    expect(validateCampaign({ ...base, enviar_em: 'not-a-date' }, now).map(e => e.field)).toContain('enviar_em');
+  });
 });
