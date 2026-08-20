@@ -35,5 +35,16 @@ export async function POST(req: Request) {
   const supabase = createServerClient();
   const { data, error } = await supabase.from('campaigns').insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Agendamento no horário exato: avisa o n8n na hora, pra ele esperar até enviar_em.
+  // Fire-and-forget — se falhar, o cron dispatcher de 3 min é a rede de segurança.
+  if (data?.status === 'agendada' && process.env.N8N_WEBHOOK_URL) {
+    fetch(process.env.N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: data.id }),
+    }).catch(() => {});
+  }
+
   return NextResponse.json(data, { status: 201 });
 }
