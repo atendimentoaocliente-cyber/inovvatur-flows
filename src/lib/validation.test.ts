@@ -30,4 +30,7 @@ describe('validateCampaign', () => {
   it('rejects a malformed date when scheduling', () => {
     expect(validateCampaign({ ...base, enviar_em: 'not-a-date' }, now).map(e => e.field)).toContain('enviar_em');
   });
+  it('rejects an invalid tipo', () => {
+    expect(validateCampaign({ ...base, tipo: 'foo' as unknown as CampaignDraft['tipo'] }, now).map(e => e.field)).toContain('tipo');
+  });
 });

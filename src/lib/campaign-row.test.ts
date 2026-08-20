@@ -27,4 +27,10 @@ describe('buildCampaignRow', () => {
   it('asDraft forces status rascunho', () => {
     expect(buildCampaignRow(draft, 'aud-1', now, { asDraft: true }).status).toBe('rascunho');
   });
+  it('coerces a sparse draft without throwing', () => {
+    const row = buildCampaignRow({ tipo: 'texto' } as unknown as CampaignDraft, null, now, { asDraft: true });
+    expect(row.nome).toBe('');
+    expect(row.mensagem).toBe('');
+    expect(row.status).toBe('rascunho');
+  });
 });

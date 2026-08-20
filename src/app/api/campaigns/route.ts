@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { buildCampaignRow } from '@/lib/campaign-row';
+import { readJson } from '@/lib/http';
 
 export async function GET(req: Request) {
   const status = new URL(req.url).searchParams.get('status');
@@ -14,11 +15,18 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const draft = body.draft as CampaignDraft;
+  const parsed = await readJson<{ draft?: unknown; asDraft?: unknown; audience_id?: unknown }>(req);
+  if (!parsed.ok) return parsed.res;
+  const body = parsed.data;
+  const draft = body.draft as CampaignDraft | undefined;
+  if (!draft || typeof draft !== 'object') {
+    return NextResponse.json({ error: 'draft é obrigatório' }, { status: 400 });
+  }
+  if (!['texto', 'imagem', 'video', 'pdf'].includes(draft.tipo)) {
+    return NextResponse.json({ errors: [{ field: 'tipo', message: 'Tipo inválido.' }] }, { status: 400 });
+  }
   const asDraft = Boolean(body.asDraft);
   const audienceId = (body.audience_id as string | null) ?? null;
-
   if (!asDraft) {
     const errors = validateCampaign(draft, new Date());
     if (errors.length) return NextResponse.json({ errors }, { status: 400 });

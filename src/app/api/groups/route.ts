@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { readJson } from '@/lib/http';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -10,7 +11,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  const parsed = await readJson<{ group_id?: unknown; nome?: unknown; ativo?: unknown }>(req);
+  if (!parsed.ok) return parsed.res;
+  const body = parsed.data;
   const group_id = String(body.group_id ?? '').trim();
   const nome = String(body.nome ?? '').trim();
   if (!group_id || !nome) {
@@ -19,7 +22,7 @@ export async function POST(req: Request) {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from('groups')
-    .insert({ group_id, nome, ativo: body.ativo ?? true })
+    .insert({ group_id, nome, ativo: Boolean(body.ativo ?? true) })
     .select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data, { status: 201 });

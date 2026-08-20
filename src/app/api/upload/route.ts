@@ -1,11 +1,25 @@
 import { NextResponse } from 'next/server';
 import { createServerClient, MEDIA_BUCKET } from '@/lib/supabase/server';
 
+const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'application/pdf'];
+const MAX_BYTES = 20 * 1024 * 1024;
+
 export async function POST(req: Request) {
-  const form = await req.formData();
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ error: 'formulário inválido' }, { status: 400 });
+  }
   const file = form.get('file');
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'arquivo ausente' }, { status: 400 });
+  }
+  if (!ALLOWED.includes(file.type)) {
+    return NextResponse.json({ error: 'Tipo de arquivo não permitido' }, { status: 400 });
+  }
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json({ error: 'Arquivo acima de 20MB' }, { status: 400 });
   }
   const supabase = createServerClient();
   const ext = file.name.includes('.') ? file.name.split('.').pop() : 'bin';

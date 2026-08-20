@@ -21,11 +21,11 @@ export function buildCampaignRow(
   const enviar_em = draft.agendar ? draft.enviar_em : now.toISOString();
   const status: CampaignStatus = opts.asDraft ? 'rascunho' : 'agendada';
   return {
-    nome: draft.nome.trim(),
+    nome: String(draft.nome ?? '').trim(),
     tipo: draft.tipo,
-    mensagem: draft.mensagem.trim(),
-    midia_url: draft.midia_url,
-    mencionar_todos: draft.mencionar_todos,
+    mensagem: String(draft.mensagem ?? '').trim(),
+    midia_url: draft.midia_url ?? null,
+    mencionar_todos: Boolean(draft.mencionar_todos),
     audience_id: audienceId,
     enviar_em,
     status,

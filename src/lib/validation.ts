@@ -17,6 +17,8 @@ export interface ValidationError {
 
 export function validateCampaign(d: CampaignDraft, now: Date): ValidationError[] {
   const errors: ValidationError[] = [];
+  const TIPOS = ['texto', 'imagem', 'video', 'pdf'];
+  if (!TIPOS.includes(d.tipo)) errors.push({ field: 'tipo', message: 'Tipo inválido.' });
   if (!d.nome.trim()) errors.push({ field: 'nome', message: 'Dê um nome à campanha.' });
   if (!d.mensagem.trim()) errors.push({ field: 'mensagem', message: 'Escreva a mensagem.' });
   if (d.tipo !== 'texto' && !d.midia_url) {
