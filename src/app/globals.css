@@ -17,6 +17,13 @@
   --font-sans: Inter, system-ui, sans-serif;
 
   --radius-xl2: 16px;
+
+  --animate-chip-pulse: chip-pulse 1.2s ease-in-out infinite;
+
+  @keyframes chip-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
 }
 
 html, body { height: 100%; }
@@ -25,4 +32,17 @@ body {
   color: #F6F8FF;
   background-image: radial-gradient(900px 500px at 85% 115%, rgba(1,71,255,.16), transparent 60%);
   background-attachment: fixed;
+}
+
+/* Keyboard focus ring for the whole panel */
+:focus-visible {
+  outline: 2px solid var(--color-blue2);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
