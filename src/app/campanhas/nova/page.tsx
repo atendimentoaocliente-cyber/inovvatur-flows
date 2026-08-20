@@ -1,17 +1,19 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import type { CampaignType } from '@/lib/types';
+import { useRouter, useSearchParams } from 'next/navigation';
+import type { Audience, Campaign, CampaignType, Group } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { estimateDuration, formatDuration } from '@/lib/message';
 
-// Display-only hint for the throttling copy — the n8n dispatcher uses the real
-// active-group count at send time. Kept in one place so the info line and the
-// "Público" card stay in sync with the mockup.
+// Fallback for the throttling copy when we don't yet know the real active-group
+// count (fetch pending or failed). The n8n dispatcher uses the true count at send
+// time — this only drives the "~N grupos ≈ …" estimate line.
 const GROUP_COUNT_HINT = 18;
+
+type AudienceMode = 'todos' | 'salvo' | 'grupos';
 
 const tipos: { key: CampaignType; label: string }[] = [
   { key: 'texto', label: 'Só texto' },
@@ -33,8 +35,44 @@ function formatBytes(bytes: number): string {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-export default function NovaCampanha() {
+// Stored dates are ISO/UTC; <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm"
+// in the *browser's local* time. Build it from local getters so the wall-clock
+// value the user picked survives the round-trip.
+function isoToLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
+    d.getMinutes(),
+  )}`;
+}
+
+export default function NovaCampanhaPage() {
+  // useSearchParams needs a Suspense boundary to keep the route buildable.
+  return (
+    <Suspense fallback={<ComposerSkeleton />}>
+      <NovaCampanha />
+    </Suspense>
+  );
+}
+
+function ComposerSkeleton() {
+  return (
+    <div>
+      <div className="mb-[22px] h-8 w-52 animate-pulse rounded-lg bg-surface2" />
+      <div className="grid grid-cols-1 items-start gap-[26px] lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="h-[560px] animate-pulse rounded-xl2 border border-border bg-surface" />
+        <div className="h-[440px] animate-pulse rounded-[22px] border border-border bg-surface" />
+      </div>
+    </div>
+  );
+}
+
+function NovaCampanha() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('id');
+  const editing = Boolean(editId);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [tipo, setTipo] = useState<CampaignType>('imagem');
@@ -46,11 +84,122 @@ export default function NovaCampanha() {
   const [mencionar, setMencionar] = useState(false);
   const [agendar, setAgendar] = useState(true);
   const [enviarEm, setEnviarEm] = useState('');
+
+  // Audience picker
+  const [audienceMode, setAudienceMode] = useState<AudienceMode>('todos');
+  const [audiences, setAudiences] = useState<Audience[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedAudienceId, setSelectedAudienceId] = useState<string | null>(null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [groupQuery, setGroupQuery] = useState('');
+
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(editing);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const est = estimateDuration(GROUP_COUNT_HINT);
+  // Fetch audiences + groups on mount so both picker modes are ready. Failures are
+  // non-fatal — the composer still works, the lists just render empty.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const [audRes, grpRes] = await Promise.allSettled([
+        fetch('/api/audiences'),
+        fetch('/api/groups'),
+      ]);
+      if (!alive) return;
+      if (audRes.status === 'fulfilled' && audRes.value.ok) {
+        setAudiences(((await audRes.value.json().catch(() => [])) as Audience[]) ?? []);
+      }
+      if (grpRes.status === 'fulfilled' && grpRes.value.ok) {
+        setGroups(((await grpRes.value.json().catch(() => [])) as Group[]) ?? []);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Edit mode: load the campaign and prefill every field.
+  useEffect(() => {
+    if (!editId) return;
+    let alive = true;
+    setLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/campaigns/${editId}`);
+        if (!alive) return;
+        if (!res.ok) {
+          setSubmitError('Não foi possível carregar a campanha para edição.');
+          return;
+        }
+        const c = (await res.json()) as Campaign;
+        setTipo(c.tipo);
+        setNome(c.nome ?? '');
+        setMensagem(c.mensagem ?? '');
+        setMidiaUrl(c.midia_url ?? null);
+        setMidiaMeta(null);
+        setMencionar(Boolean(c.mencionar_todos));
+
+        // No stored "agendar" flag: treat a future enviar_em as a live schedule,
+        // a past one as "enviar agora". Prefill the field either way.
+        if (c.enviar_em) {
+          setEnviarEm(isoToLocalInput(c.enviar_em));
+          setAgendar(new Date(c.enviar_em).getTime() > Date.now());
+        } else {
+          setAgendar(false);
+          setEnviarEm('');
+        }
+
+        // Audience: explicit group list wins, then a saved público, else "todos".
+        if (c.group_ids && c.group_ids.length) {
+          setAudienceMode('grupos');
+          setSelectedGroupIds(c.group_ids);
+        } else if (c.audience_id) {
+          setAudienceMode('salvo');
+          setSelectedAudienceId(c.audience_id);
+        } else {
+          setAudienceMode('todos');
+        }
+      } catch {
+        if (alive) setSubmitError('Sem conexão com o servidor. Tente de novo.');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [editId]);
+
+  const activeGroups = useMemo(() => groups.filter((g) => g.ativo), [groups]);
+  const activeCount = activeGroups.length || GROUP_COUNT_HINT;
+
+  function audienceGroupCount(a: Audience): number {
+    return a.tipo === 'manual' ? (a.group_ids?.length ?? 0) : activeCount;
+  }
+
+  const selectedAudience = useMemo(
+    () => audiences.find((a) => a.id === selectedAudienceId) ?? null,
+    [audiences, selectedAudienceId],
+  );
+
+  const filteredGroups = useMemo(() => {
+    const q = groupQuery.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter(
+      (g) => g.nome.toLowerCase().includes(q) || g.group_id.toLowerCase().includes(q),
+    );
+  }, [groups, groupQuery]);
+
+  // Effective group count drives the throttling estimate for the chosen audience.
+  const effectiveCount =
+    audienceMode === 'grupos'
+      ? selectedGroupIds.length || activeCount
+      : audienceMode === 'salvo' && selectedAudience
+        ? audienceGroupCount(selectedAudience)
+        : activeCount;
+  const est = estimateDuration(effectiveCount);
 
   function clearError(field: string) {
     setErrors((e) => {
@@ -68,6 +217,21 @@ export default function NovaCampanha() {
     }
     clearError('tipo');
     clearError('midia_url');
+  }
+
+  function toggleGroup(groupId: string) {
+    setSelectedGroupIds((s) =>
+      s.includes(groupId) ? s.filter((x) => x !== groupId) : [...s, groupId],
+    );
+  }
+
+  // Resolve the picker into the API's { audience_id, group_ids } shape.
+  function resolveAudience(): { audience_id: string | null; group_ids: string[] | null } {
+    if (audienceMode === 'salvo') return { audience_id: selectedAudienceId, group_ids: null };
+    if (audienceMode === 'grupos') {
+      return { audience_id: null, group_ids: selectedGroupIds.length ? selectedGroupIds : null };
+    }
+    return { audience_id: null, group_ids: null };
   }
 
   async function uploadFile(file: File) {
@@ -109,6 +273,7 @@ export default function NovaCampanha() {
       agendar,
       enviar_em: agendar && enviarEm ? new Date(enviarEm).toISOString() : null,
     };
+    // Rascunho skips validation; a real submit (create or edit) must be complete.
     if (!asDraft) {
       const errs = validateCampaign(draft, new Date());
       if (errs.length) {
@@ -118,11 +283,45 @@ export default function NovaCampanha() {
     }
     setErrors({});
     setBusy(true);
+    const { audience_id, group_ids } = resolveAudience();
     try {
+      if (editing) {
+        const enviar_em = agendar && enviarEm ? new Date(enviarEm).toISOString() : new Date().toISOString();
+        const res = await fetch(`/api/campaigns/${editId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: nome.trim(),
+            mensagem: mensagem.trim(),
+            midia_url: midiaUrl,
+            mencionar_todos: mencionar,
+            tipo,
+            enviar_em,
+            audience_id,
+            group_ids,
+          }),
+        });
+        if (res.ok) {
+          router.push('/campanhas');
+          return;
+        }
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          errors?: { field: string; message: string }[];
+        };
+        if (body.errors?.length) {
+          setErrors(Object.fromEntries(body.errors.map((e) => [e.field, e.message])));
+        } else {
+          // 409 = em envio / enviada; surface the server's message inline.
+          setSubmitError(body.error ?? 'Não foi possível salvar as alterações. Tente de novo.');
+        }
+        return;
+      }
+
       const res = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draft, asDraft, audience_id: null }),
+        body: JSON.stringify({ draft, asDraft, audience_id, group_ids }),
       });
       if (res.ok) {
         router.push('/campanhas');
@@ -144,24 +343,32 @@ export default function NovaCampanha() {
     }
   }
 
+  const midiaLabel =
+    midiaMeta?.name ??
+    (midiaUrl ? decodeURIComponent(midiaUrl.split('/').pop() ?? 'Mídia atual') : null);
+
   return (
     <div>
       <div className="mb-1.5 text-[13px] text-muted">
         <Link href="/campanhas" className="transition-colors hover:text-ink">
           Campanhas
         </Link>{' '}
-        / <b className="font-semibold text-ink">Nova campanha</b>
+        / <b className="font-semibold text-ink">{editing ? 'Editar campanha' : 'Nova campanha'}</b>
       </div>
-      <h1 className="mb-[22px] font-display text-[26px] font-semibold tracking-[-0.01em]">Nova campanha</h1>
+      <h1 className="mb-[22px] font-display text-[26px] font-semibold tracking-[-0.01em]">
+        {editing ? 'Editar campanha' : 'Nova campanha'}
+      </h1>
 
       <div className="grid grid-cols-1 items-start gap-[26px] lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* FORM */}
         <div className="rounded-xl2 border border-border bg-surface p-[22px]">
-          <Field
-            label="Nome da campanha"
-            hint="(só pra você identificar)"
-            error={errors.nome}
-          >
+          {loading && (
+            <div className="mb-5 rounded-xl border border-border bg-surface2 px-3.5 py-3 text-[13px] text-muted">
+              Carregando campanha…
+            </div>
+          )}
+
+          <Field label="Nome da campanha" hint="(só pra você identificar)" error={errors.nome}>
             <input
               type="text"
               value={nome}
@@ -204,12 +411,12 @@ export default function NovaCampanha() {
               >
                 {uploading ? (
                   <span>Enviando arquivo…</span>
-                ) : midiaMeta ? (
+                ) : midiaLabel ? (
                   <>
-                    <span className="font-semibold text-green">✓ {midiaMeta.name}</span>
+                    <span className="font-semibold text-green">✓ {midiaLabel}</span>
                     <br />
                     <span className="text-xs text-muted">
-                      {formatBytes(midiaMeta.size)} · clique para trocar
+                      {midiaMeta ? `${formatBytes(midiaMeta.size)} · ` : ''}clique para trocar
                     </span>
                   </>
                 ) : (
@@ -255,19 +462,131 @@ export default function NovaCampanha() {
             </label>
           </Field>
 
+          {/* AUDIENCE PICKER */}
           <Field label="Público">
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-surface2 px-3.5 py-[13px]">
-              <span className="font-display text-xl font-semibold leading-none">🌐</span>
-              <div className="text-sm">
-                <div className="font-semibold">Todos os grupos ativos</div>
-                <div className="text-xs text-muted">da aba “Grupos” — definido no envio</div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <SegButton on={audienceMode === 'todos'} onClick={() => setAudienceMode('todos')}>
+                🌐 Todos os grupos
+              </SegButton>
+              <SegButton on={audienceMode === 'salvo'} onClick={() => setAudienceMode('salvo')}>
+                ⭐ Público salvo
+              </SegButton>
+              <SegButton on={audienceMode === 'grupos'} onClick={() => setAudienceMode('grupos')}>
+                ✅ Grupos específicos
+              </SegButton>
+            </div>
+
+            {audienceMode === 'todos' && (
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface2 px-3.5 py-[13px]">
+                <span className="font-display text-xl font-semibold leading-none">🌐</span>
+                <div className="text-sm">
+                  <div className="font-semibold">Todos os grupos ativos</div>
+                  <div className="text-xs text-muted">
+                    {activeGroups.length ? `${activeCount} grupos` : 'definido no envio'} · da aba “Grupos”
+                  </div>
+                </div>
+                <Link
+                  href="/publicos"
+                  className="ml-auto shrink-0 text-[13px] font-semibold text-blue2 transition-colors hover:text-ink"
+                >
+                  Gerenciar ›
+                </Link>
               </div>
-              <Link
-                href="/publicos"
-                className="ml-auto shrink-0 text-[13px] font-semibold text-blue2 transition-colors hover:text-ink"
-              >
-                Escolher grupos ›
-              </Link>
+            )}
+
+            {audienceMode === 'salvo' && (
+              <div>
+                {audiences.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-surface2 px-3.5 py-3 text-[13px] text-muted">
+                    Nenhum público salvo ainda.{' '}
+                    <Link href="/publicos" className="font-semibold text-blue2 hover:text-ink">
+                      Criar um público ›
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={selectedAudienceId ?? ''}
+                      onChange={(e) => setSelectedAudienceId(e.target.value || null)}
+                      className={`${inputCls} [color-scheme:dark] cursor-pointer`}
+                    >
+                      <option value="">Escolha um público…</option>
+                      {audiences.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nome} · {audienceGroupCount(a)} grupos
+                        </option>
+                      ))}
+                    </select>
+                    {selectedAudience && (
+                      <div className="mt-2 text-[13px] text-muted">
+                        Público:{' '}
+                        <b className="text-ink">{selectedAudience.nome}</b> (
+                        {audienceGroupCount(selectedAudience)})
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {audienceMode === 'grupos' && (
+              <div>
+                <input
+                  value={groupQuery}
+                  onChange={(e) => setGroupQuery(e.target.value)}
+                  placeholder="🔎 Buscar grupo pelo nome ou ID…"
+                  className={`${inputCls} mb-3 py-2.5`}
+                />
+                <div className="max-h-72 overflow-auto rounded-xl border border-border">
+                  {groups.length === 0 ? (
+                    <div className="px-3.5 py-6 text-sm text-muted">
+                      Nenhum grupo cadastrado. Adicione grupos primeiro na aba Grupos.
+                    </div>
+                  ) : filteredGroups.length === 0 ? (
+                    <div className="px-3.5 py-6 text-sm text-muted">
+                      Nenhum grupo encontrado para “{groupQuery}”.
+                    </div>
+                  ) : (
+                    filteredGroups.map((g) => (
+                      <GroupRow
+                        key={g.id}
+                        group={g}
+                        checked={selectedGroupIds.includes(g.group_id)}
+                        onToggle={() => toggleGroup(g.group_id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Summary line */}
+            <div className="mt-2.5 text-[13px] text-muted">
+              {audienceMode === 'todos' && (
+                <>
+                  <b className="text-ink">{activeCount} grupos</b> · todos os ativos
+                </>
+              )}
+              {audienceMode === 'salvo' &&
+                (selectedAudience ? (
+                  <>
+                    Público: <b className="text-ink">{selectedAudience.nome}</b> (
+                    {audienceGroupCount(selectedAudience)})
+                  </>
+                ) : (
+                  <>Nenhum público escolhido</>
+                ))}
+              {audienceMode === 'grupos' &&
+                (selectedGroupIds.length ? (
+                  <>
+                    <b className="text-ink">{selectedGroupIds.length}</b>{' '}
+                    {selectedGroupIds.length === 1
+                      ? 'grupo selecionado'
+                      : 'grupos selecionados'}
+                  </>
+                ) : (
+                  <>Nenhum grupo marcado · envia para todos os ativos</>
+                ))}
             </div>
           </Field>
 
@@ -297,7 +616,7 @@ export default function NovaCampanha() {
             <span aria-hidden="true">⏱️</span>
             <span>
               O envio respeita o intervalo de{' '}
-              <b className="text-[#cdd8f2]">8–15s entre grupos</b> (anti-bloqueio). ~{GROUP_COUNT_HINT}{' '}
+              <b className="text-[#cdd8f2]">8–15s entre grupos</b> (anti-bloqueio). ~{effectiveCount}{' '}
               grupos ≈ {formatDuration(est.minSec)}–{formatDuration(est.maxSec)} pra concluir.
             </span>
           </div>
@@ -312,19 +631,35 @@ export default function NovaCampanha() {
             <button
               type="button"
               onClick={() => submit(false)}
-              disabled={busy || uploading}
+              disabled={busy || uploading || loading}
               className="rounded-xl bg-blue px-5 py-[13px] text-sm font-semibold text-white shadow-[0_6px_20px_rgba(1,71,255,.35)] transition-colors hover:bg-[#0a54ff] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
-              {busy ? 'Salvando…' : agendar ? '📅 Agendar campanha' : '🚀 Enviar agora'}
+              {busy
+                ? 'Salvando…'
+                : editing
+                  ? '💾 Salvar alterações'
+                  : agendar
+                    ? '📅 Agendar campanha'
+                    : '🚀 Enviar agora'}
             </button>
-            <button
-              type="button"
-              onClick={() => submit(true)}
-              disabled={busy || uploading}
-              className="rounded-xl border border-border px-5 py-[13px] text-sm font-semibold text-ink transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Salvar rascunho
-            </button>
+            {!editing && (
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={busy || uploading || loading}
+                className="rounded-xl border border-border px-5 py-[13px] text-sm font-semibold text-ink transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Salvar rascunho
+              </button>
+            )}
+            {editing && (
+              <Link
+                href="/campanhas"
+                className="rounded-xl border border-border px-5 py-[13px] text-sm font-semibold text-ink transition-colors hover:bg-white/5"
+              >
+                Cancelar
+              </Link>
+            )}
           </div>
         </div>
 
@@ -344,6 +679,53 @@ export default function NovaCampanha() {
 
 const inputCls =
   'w-full rounded-xl border border-border bg-surface2 px-[13px] py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-blue2';
+
+function GroupRow({
+  group,
+  checked,
+  onToggle,
+}: {
+  group: Group;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const selectable = group.ativo;
+  const Wrapper = selectable ? 'label' : 'div';
+  return (
+    <Wrapper
+      className={`flex items-center gap-3 border-t border-border px-3.5 py-3 first:border-t-0 ${
+        selectable ? 'cursor-pointer hover:bg-white/[0.02]' : 'cursor-not-allowed opacity-60'
+      }`}
+    >
+      {selectable && (
+        <input type="checkbox" checked={checked} onChange={onToggle} className="sr-only" />
+      )}
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs text-white transition-colors ${
+          checked ? 'border-blue bg-blue' : 'border-[#33405f]'
+        }`}
+        aria-hidden="true"
+      >
+        {checked ? '✓' : ''}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-sm font-medium ${selectable ? '' : 'text-muted'}`}>
+          {group.nome}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-xs text-muted">{group.group_id}</span>
+      </span>
+      {selectable ? (
+        <span className="ml-auto shrink-0 rounded-full border border-green/30 px-2 py-0.5 text-[11px] text-green">
+          ativo
+        </span>
+      ) : (
+        <span className="ml-auto shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">
+          inativo
+        </span>
+      )}
+    </Wrapper>
+  );
+}
 
 function Field({
   label,
