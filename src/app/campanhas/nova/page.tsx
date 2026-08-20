@@ -28,6 +28,16 @@ const acceptByTipo: Record<Exclude<CampaignType, 'texto'>, string> = {
   pdf: 'application/pdf',
 };
 
+// Media filenames come back URL-encoded; a malformed %-sequence would throw, so
+// fall back to the raw value instead of crashing the composer.
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -275,9 +285,15 @@ function NovaCampanha() {
     };
     // Rascunho skips validation; a real submit (create or edit) must be complete.
     if (!asDraft) {
-      const errs = validateCampaign(draft, new Date());
-      if (errs.length) {
-        setErrors(Object.fromEntries(errs.map((e) => [e.field, e.message])));
+      const map = Object.fromEntries(
+        validateCampaign(draft, new Date()).map((e) => [e.field, e.message]),
+      );
+      // "Público salvo" needs an actual selection — never silently fall back to "todos".
+      if (audienceMode === 'salvo' && !selectedAudienceId) {
+        map.audience = 'Escolha um público salvo para continuar.';
+      }
+      if (Object.keys(map).length) {
+        setErrors(map);
         return;
       }
     }
@@ -299,6 +315,9 @@ function NovaCampanha() {
             enviar_em,
             audience_id,
             group_ids,
+            // Editing is always a (re)schedule: set status so a former rascunho/erro/
+            // cancelada gets re-armed on the n8n scheduler when saved.
+            status: 'agendada',
           }),
         });
         if (res.ok) {
@@ -345,7 +364,7 @@ function NovaCampanha() {
 
   const midiaLabel =
     midiaMeta?.name ??
-    (midiaUrl ? decodeURIComponent(midiaUrl.split('/').pop() ?? 'Mídia atual') : null);
+    (midiaUrl ? safeDecode(midiaUrl.split('/').pop() ?? 'Mídia atual') : null);
 
   return (
     <div>
@@ -463,15 +482,27 @@ function NovaCampanha() {
           </Field>
 
           {/* AUDIENCE PICKER */}
-          <Field label="Público">
+          <Field label="Público" error={errors.audience}>
             <div className="mb-3 flex flex-wrap gap-2">
-              <SegButton on={audienceMode === 'todos'} onClick={() => setAudienceMode('todos')}>
+              <SegButton
+                on={audienceMode === 'todos'}
+                onClick={() => {
+                  setAudienceMode('todos');
+                  clearError('audience');
+                }}
+              >
                 🌐 Todos os grupos
               </SegButton>
               <SegButton on={audienceMode === 'salvo'} onClick={() => setAudienceMode('salvo')}>
                 ⭐ Público salvo
               </SegButton>
-              <SegButton on={audienceMode === 'grupos'} onClick={() => setAudienceMode('grupos')}>
+              <SegButton
+                on={audienceMode === 'grupos'}
+                onClick={() => {
+                  setAudienceMode('grupos');
+                  clearError('audience');
+                }}
+              >
                 ✅ Grupos específicos
               </SegButton>
             </div>
@@ -506,8 +537,12 @@ function NovaCampanha() {
                 ) : (
                   <>
                     <select
+                      aria-label="Público salvo"
                       value={selectedAudienceId ?? ''}
-                      onChange={(e) => setSelectedAudienceId(e.target.value || null)}
+                      onChange={(e) => {
+                        setSelectedAudienceId(e.target.value || null);
+                        clearError('audience');
+                      }}
                       className={`${inputCls} [color-scheme:dark] cursor-pointer`}
                     >
                       <option value="">Escolha um público…</option>
@@ -532,6 +567,7 @@ function NovaCampanha() {
             {audienceMode === 'grupos' && (
               <div>
                 <input
+                  aria-label="Buscar grupo pelo nome ou ID"
                   value={groupQuery}
                   onChange={(e) => setGroupQuery(e.target.value)}
                   placeholder="🔎 Buscar grupo pelo nome ou ID…"
@@ -562,11 +598,16 @@ function NovaCampanha() {
 
             {/* Summary line */}
             <div className="mt-2.5 text-[13px] text-muted">
-              {audienceMode === 'todos' && (
-                <>
-                  <b className="text-ink">{activeCount} grupos</b> · todos os ativos
-                </>
-              )}
+              {audienceMode === 'todos' &&
+                (activeGroups.length ? (
+                  <>
+                    <b className="text-ink">{activeCount} grupos</b> · todos os ativos
+                  </>
+                ) : (
+                  <>
+                    <b className="text-ink">Todos os grupos ativos</b> · definido no envio
+                  </>
+                ))}
               {audienceMode === 'salvo' &&
                 (selectedAudience ? (
                   <>
