@@ -8,6 +8,7 @@ export interface CampaignRow {
   midia_url: string | null;
   mencionar_todos: boolean;
   audience_id: string | null;
+  group_ids: string[] | null;
   enviar_em: string | null;
   status: CampaignStatus;
 }
@@ -15,6 +16,7 @@ export interface CampaignRow {
 export function buildCampaignRow(
   draft: CampaignDraft,
   audienceId: string | null,
+  groupIds: string[] | null,
   now: Date,
   opts: { asDraft: boolean },
 ): CampaignRow {
@@ -27,6 +29,7 @@ export function buildCampaignRow(
     midia_url: draft.midia_url ?? null,
     mencionar_todos: Boolean(draft.mencionar_todos),
     audience_id: audienceId,
+    group_ids: groupIds && groupIds.length ? groupIds : null,
     enviar_em,
     status,
   };

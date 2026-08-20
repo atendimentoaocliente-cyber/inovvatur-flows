@@ -33,6 +33,7 @@ export interface Campaign {
   midia_url: string | null;
   mencionar_todos: boolean;
   audience_id: string | null;
+  group_ids: string[] | null;
   enviar_em: string | null;
   status: CampaignStatus;
   resultado: CampaignResult | null;
