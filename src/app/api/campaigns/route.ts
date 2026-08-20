@@ -15,7 +15,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const parsed = await readJson<{ draft?: unknown; asDraft?: unknown; audience_id?: unknown }>(req);
+  const parsed = await readJson<{
+    draft?: unknown;
+    asDraft?: unknown;
+    audience_id?: unknown;
+    group_ids?: unknown;
+  }>(req);
   if (!parsed.ok) return parsed.res;
   const body = parsed.data;
   const draft = body.draft as CampaignDraft | undefined;
@@ -27,11 +32,12 @@ export async function POST(req: Request) {
   }
   const asDraft = Boolean(body.asDraft);
   const audienceId = (body.audience_id as string | null) ?? null;
+  const groupIds = Array.isArray(body.group_ids) ? (body.group_ids as string[]) : null;
   if (!asDraft) {
     const errors = validateCampaign(draft, new Date());
     if (errors.length) return NextResponse.json({ errors }, { status: 400 });
   }
-  const row = buildCampaignRow(draft, audienceId, new Date(), { asDraft });
+  const row = buildCampaignRow(draft, audienceId, groupIds, new Date(), { asDraft });
   const supabase = createServerClient();
   const { data, error } = await supabase.from('campaigns').insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
