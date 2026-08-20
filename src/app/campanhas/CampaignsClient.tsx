@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Campaign, CampaignStatus } from '@/lib/types';
-import { CampaignRow } from '@/components/CampaignRow';
+import { CampaignRow, type ActionResult } from '@/components/CampaignRow';
 import { formatWhen } from '@/lib/format';
 
 type Tab = 'agendadas' | 'historico' | 'rascunhos';
@@ -28,24 +28,72 @@ const emptyMessage: Record<Tab, string> = {
 
 export function CampaignsClient({ initial }: { initial: Campaign[] }) {
   const [tab, setTab] = useState<Tab>('agendadas');
+  // Own the list so row actions can mutate it in place (update/remove) without a full reload.
+  const [campaigns, setCampaigns] = useState<Campaign[]>(initial);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const stats = useMemo(() => {
-    const upcoming = initial
+    const upcoming = campaigns
       .filter((c) => (c.status === 'agendada' || c.status === 'enviando') && c.enviar_em)
       .map((c) => c.enviar_em as string)
       .sort();
     return {
       proximo: upcoming.length ? formatWhen(upcoming[0]) : '—',
-      agendadas: initial.filter((c) => c.status === 'agendada').length,
-      enviadas: initial.filter((c) => c.status === 'enviada').length,
-      rascunhos: initial.filter((c) => c.status === 'rascunho').length,
+      agendadas: campaigns.filter((c) => c.status === 'agendada').length,
+      enviadas: campaigns.filter((c) => c.status === 'enviada').length,
+      rascunhos: campaigns.filter((c) => c.status === 'rascunho').length,
     };
-  }, [initial]);
+  }, [campaigns]);
 
   const rows = useMemo(
-    () => initial.filter((c) => tabFilter[tab](c.status)),
-    [initial, tab],
+    () => campaigns.filter((c) => tabFilter[tab](c.status)),
+    [campaigns, tab],
   );
+
+  async function handleDelete(id: string): Promise<ActionResult> {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCampaigns((cs) => cs.filter((c) => c.id !== id));
+        return { ok: true };
+      }
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const error = body.error ?? 'Não foi possível excluir a campanha.';
+      setActionError(error);
+      return { ok: false, error };
+    } catch {
+      const error = 'Sem conexão com o servidor. Tente de novo.';
+      setActionError(error);
+      return { ok: false, error };
+    }
+  }
+
+  async function handleSetStatus(id: string, status: CampaignStatus): Promise<ActionResult> {
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) {
+        const updated = (await res.json().catch(() => null)) as Campaign | null;
+        setCampaigns((cs) =>
+          cs.map((c) => (c.id === id ? { ...c, ...(updated ?? { status }) } : c)),
+        );
+        return { ok: true };
+      }
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const error = body.error ?? 'Não foi possível atualizar a campanha.';
+      setActionError(error);
+      return { ok: false, error };
+    } catch {
+      const error = 'Sem conexão com o servidor. Tente de novo.';
+      setActionError(error);
+      return { ok: false, error };
+    }
+  }
 
   return (
     <div>
@@ -89,19 +137,44 @@ export function CampaignsClient({ initial }: { initial: Campaign[] }) {
         })}
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-3.5 flex items-start gap-2.5 rounded-xl border border-orange/30 bg-orange/[0.08] px-3.5 py-3 text-sm text-[#ffb183]"
+        >
+          <span aria-hidden="true">⚠️</span>
+          <span className="flex-1">{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            aria-label="Fechar aviso"
+            className="shrink-0 text-muted transition-colors hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl2 border border-border bg-surface">
         {rows.length === 0 ? (
           <div className="p-6 text-sm text-muted">{emptyMessage[tab]}</div>
         ) : (
           <>
-            <div className="grid grid-cols-[2.4fr_1.3fr_1.1fr_0.9fr] gap-3 bg-surface2 px-[18px] py-[11px] text-xs font-semibold uppercase tracking-[0.06em] text-muted">
+            <div className="grid grid-cols-[2.4fr_1.3fr_1fr_0.85fr_1.15fr] gap-3 bg-surface2 px-[18px] py-[11px] text-xs font-semibold uppercase tracking-[0.06em] text-muted">
               <div>Campanha</div>
               <div>Quando</div>
               <div>Público</div>
               <div>Status</div>
+              <div className="text-right">Ações</div>
             </div>
             {rows.map((c) => (
-              <CampaignRow key={c.id} c={c} />
+              <CampaignRow
+                key={c.id}
+                c={c}
+                onDelete={handleDelete}
+                onCancel={(id) => handleSetStatus(id, 'cancelada')}
+                onReenviar={(id) => handleSetStatus(id, 'agendada')}
+              />
             ))}
           </>
         )}

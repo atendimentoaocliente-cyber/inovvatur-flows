@@ -1,4 +1,9 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
 import type { Campaign, CampaignStatus, CampaignType } from '@/lib/types';
+import { campaignActions, type CampaignAction } from '@/lib/campaign-actions';
 import { StatusChip } from './StatusChip';
 import { formatWhen } from '@/lib/format';
 
@@ -27,16 +32,49 @@ const whenHint: Record<CampaignStatus, string> = {
   erro: 'falhou',
 };
 
-export function CampaignRow({ c }: { c: Campaign }) {
+const actionMeta: Record<Exclude<CampaignAction, 'editar'>, { icon: string; label: string }> = {
+  reenviar: { icon: '↻', label: 'Reenviar' },
+  cancelar: { icon: '✕', label: 'Cancelar' },
+  excluir: { icon: '🗑', label: 'Excluir' },
+};
+
+export type ActionResult = { ok: boolean; error?: string };
+
+export function CampaignRow({
+  c,
+  onDelete,
+  onCancel,
+  onReenviar,
+}: {
+  c: Campaign;
+  onDelete: (id: string) => Promise<ActionResult>;
+  onCancel: (id: string) => Promise<ActionResult>;
+  onReenviar: (id: string) => Promise<ActionResult>;
+}) {
   const detail =
     c.status === 'enviando' && c.resultado
       ? `${c.resultado.enviados}/${c.resultado.total}`
       : undefined;
 
   const meta = typeLabel[c.tipo] + (c.mencionar_todos ? ' · menção a todos' : '');
+  const actions = campaignActions(c.status);
+
+  const [busy, setBusy] = useState<CampaignAction | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  async function run(action: Exclude<CampaignAction, 'editar'>) {
+    if (busy) return;
+    setBusy(action);
+    // On success for delete the row unmounts, so no state reset needed there.
+    if (action === 'excluir') await onDelete(c.id);
+    else if (action === 'cancelar') await onCancel(c.id);
+    else if (action === 'reenviar') await onReenviar(c.id);
+    setBusy(null);
+    setConfirming(false);
+  }
 
   return (
-    <div className="grid grid-cols-[2.4fr_1.3fr_1.1fr_0.9fr] items-center gap-3 border-t border-border px-[18px] py-[15px] first:border-t-0">
+    <div className="grid grid-cols-[2.4fr_1.3fr_1fr_0.85fr_1.15fr] items-center gap-3 border-t border-border px-[18px] py-[15px] first:border-t-0">
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface2 text-base">
           {typeIcon[c.tipo]}
@@ -59,6 +97,62 @@ export function CampaignRow({ c }: { c: Campaign }) {
       <div>
         <StatusChip status={c.status} detail={detail} />
       </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-2">
+        {c.status === 'enviando' ? (
+          <span className="text-xs text-muted">em envio…</span>
+        ) : confirming ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted">Excluir?</span>
+            <button
+              type="button"
+              onClick={() => void run('excluir')}
+              disabled={busy !== null}
+              className="rounded-lg border border-orange/40 bg-orange/[0.12] px-2.5 py-1 text-xs font-semibold text-[#ffb183] transition-colors hover:bg-orange/20 disabled:opacity-50"
+            >
+              {busy === 'excluir' ? '…' : 'Sim'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={busy !== null}
+              className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-muted transition-colors hover:text-ink disabled:opacity-50"
+            >
+              Não
+            </button>
+          </div>
+        ) : (
+          actions.map((a) =>
+            a === 'editar' ? (
+              <Link
+                key={a}
+                href={`/campanhas/nova?id=${c.id}`}
+                aria-label={`Editar ${c.nome}`}
+                title="Editar"
+                className={iconBtnCls}
+              >
+                ✏️
+              </Link>
+            ) : (
+              <button
+                key={a}
+                type="button"
+                onClick={() => (a === 'excluir' ? setConfirming(true) : void run(a))}
+                disabled={busy !== null}
+                aria-label={`${actionMeta[a].label} ${c.nome}`}
+                title={actionMeta[a].label}
+                className={iconBtnCls}
+              >
+                {busy === a ? '…' : actionMeta[a].icon}
+              </button>
+            ),
+          )
+        )}
+      </div>
     </div>
   );
 }
+
+const iconBtnCls =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface2 text-sm text-muted transition-colors hover:border-blue2 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue2 disabled:cursor-not-allowed disabled:opacity-50';
