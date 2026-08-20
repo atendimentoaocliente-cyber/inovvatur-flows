@@ -217,6 +217,15 @@
                 "type": "string",
                 "operation": "equals"
               }
+            },
+            {
+              "id": "x3",
+              "leftValue": "={{ $json.enviar_em }}",
+              "rightValue": "={{ $('Ler campanha').first().json.enviar_em }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ]
         },
@@ -229,7 +238,8 @@
       "position": [
         200,
         240
-      ]
+      ],
+      "notes": "So envia se ainda estiver agendada E o horario nao tiver sido editado (senao uma nova execucao cuida)."
     },
     {
       "parameters": {},
@@ -271,7 +281,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const c = $('Reler campanha').first().json;\nconst allGroupIds = $('Buscar grupos ativos').all().map(i => i.json.group_id).filter(Boolean);\nconst aud = c.audiences;\nconst group_ids = (aud && aud.tipo === 'manual' && Array.isArray(aud.group_ids) && aud.group_ids.length)\n  ? aud.group_ids\n  : allGroupIds;\nconst cfg = $('Config').first().json;\nreturn [{ json: {\n  id: c.id,\n  texto: c.mensagem,\n  tipo: c.tipo,\n  midia_url: c.midia_url || '',\n  mencionar_todos: c.mencionar_todos ? 'sim' : 'nao',\n  group_ids,\n  supabaseUrl: cfg.supabaseUrl,\n  supabaseKey: cfg.supabaseKey,\n} }];"
+        "jsCode": "const c = $('Reler campanha').first().json;\nconst allGroupIds = $('Buscar grupos ativos').all().map(i => i.json.group_id).filter(Boolean);\nconst aud = c.audiences;\nconst group_ids = (Array.isArray(c.group_ids) && c.group_ids.length)\n  ? c.group_ids\n  : (aud && aud.tipo === 'manual' && Array.isArray(aud.group_ids) && aud.group_ids.length)\n  ? aud.group_ids\n  : allGroupIds;\nconst cfg = $('Config').first().json;\nreturn [{ json: {\n  id: c.id,\n  texto: c.mensagem,\n  tipo: c.tipo,\n  midia_url: c.midia_url || '',\n  mencionar_todos: c.mencionar_todos ? 'sim' : 'nao',\n  group_ids,\n  supabaseUrl: cfg.supabaseUrl,\n  supabaseKey: cfg.supabaseKey,\n} }];"
       },
       "id": "prep",
       "name": "Preparar envio",

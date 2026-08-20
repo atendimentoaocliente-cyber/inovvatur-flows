@@ -17,8 +17,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -1120,
-        300
+        -1140,
+        320
       ]
     },
     {
@@ -52,10 +52,10 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -920,
-        300
+        -940,
+        320
       ],
-      "notes": "Cole aqui sua service_role key do Supabase. supabaseUrl e subWorkflowId ja estao preenchidos."
+      "notes": "Cole sua service_role key do Supabase em supabaseKey."
     },
     {
       "parameters": {
@@ -86,10 +86,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -700,
-        300
-      ],
-      "notes": "Le campanhas agendadas cujo horario ja chegou (status=agendada e enviar_em<=agora)."
+        -720,
+        320
+      ]
     },
     {
       "parameters": {
@@ -114,21 +113,21 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -480,
-        300
+        -500,
+        320
       ]
     },
     {
       "parameters": {
-        "jsCode": "const campaigns = $('Buscar campanhas due').all().map(i => i.json).filter(c => c && c.id);\nconst allGroupIds = $('Buscar grupos ativos').all().map(i => i.json.group_id).filter(Boolean);\nconst cfg = $('Config').first().json;\n\nreturn campaigns.map(c => {\n  const aud = c.audiences; // linha embutida do publico, ou null\n  const group_ids = (aud && aud.tipo === 'manual' && Array.isArray(aud.group_ids) && aud.group_ids.length)\n    ? aud.group_ids\n    : allGroupIds; // publico \"todos\" (ou sem publico) => todos os grupos ativos\n  return { json: {\n    id: c.id,\n    texto: c.mensagem,\n    tipo: c.tipo,\n    midia_url: c.midia_url || '',\n    mencionar_todos: c.mencionar_todos ? 'sim' : 'nao',\n    group_ids,\n    supabaseUrl: cfg.supabaseUrl,\n    supabaseKey: cfg.supabaseKey,\n  } };\n});"
+        "jsCode": "const campaigns = $('Buscar campanhas due').all().map(i => i.json).filter(c => c && c.id);\nconst allGroupIds = $('Buscar grupos ativos').all().map(i => i.json.group_id).filter(Boolean);\nconst cfg = $('Config').first().json;\n\nreturn campaigns.map(c => {\n  const aud = c.audiences;\n  const group_ids = (Array.isArray(c.group_ids) && c.group_ids.length)\n    ? c.group_ids\n    : (aud && aud.tipo === 'manual' && Array.isArray(aud.group_ids) && aud.group_ids.length)\n    ? aud.group_ids\n    : allGroupIds;\n  return { json: {\n    id: c.id,\n    texto: c.mensagem,\n    tipo: c.tipo,\n    midia_url: c.midia_url || '',\n    mencionar_todos: c.mencionar_todos ? 'sim' : 'nao',\n    group_ids,\n    supabaseUrl: cfg.supabaseUrl,\n    supabaseKey: cfg.supabaseKey,\n  } };\n});"
       },
       "id": "prepare",
       "name": "Preparar lote",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -260,
-        300
+        -280,
+        320
       ]
     },
     {
@@ -140,8 +139,8 @@
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        -40,
-        300
+        -60,
+        320
       ]
     },
     {
@@ -151,8 +150,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        200,
-        160
+        160,
+        180
       ]
     },
     {
@@ -187,10 +186,58 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        200,
-        380
+        160,
+        400
       ],
-      "notes": "O filtro &status=eq.agendada evita reprocessar se outra execucao ja pegou a campanha."
+      "notes": "O filtro &status=eq.agendada evita reprocessar se outra execucao ja pegou."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "texto",
+              "type": "string",
+              "value": "={{ $('Loop Campanhas').item.json.texto }}"
+            },
+            {
+              "id": "e2",
+              "name": "tipo",
+              "type": "string",
+              "value": "={{ $('Loop Campanhas').item.json.tipo }}"
+            },
+            {
+              "id": "e3",
+              "name": "midia_url",
+              "type": "string",
+              "value": "={{ $('Loop Campanhas').item.json.midia_url }}"
+            },
+            {
+              "id": "e4",
+              "name": "mencionar_todos",
+              "type": "string",
+              "value": "={{ $('Loop Campanhas').item.json.mencionar_todos }}"
+            },
+            {
+              "id": "e5",
+              "name": "group_ids",
+              "type": "array",
+              "value": "={{ $('Loop Campanhas').item.json.group_ids }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prep-input",
+      "name": "Preparar entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        400
+      ],
+      "notes": "Remonta texto/tipo/midia_url/mencionar_todos/group_ids para o SUB (a chamada HTTP anterior trocou o item pela linha do banco)."
     },
     {
       "parameters": {
@@ -208,16 +255,15 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.1,
       "position": [
-        420,
-        380
+        600,
+        400
       ],
-      "onError": "continueErrorOutput",
-      "notes": "Chama o [SUB] Enviar para Grupos passando texto/tipo/midia_url/mencionar_todos/group_ids."
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Loop Campanhas').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').first().json.id }}",
+        "url": "={{ $('Loop Campanhas').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').item.json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -238,7 +284,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"enviados\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"falhas\": 0 } }",
+        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"enviados\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"falhas\": 0 } }",
         "options": {}
       },
       "id": "mark-sent",
@@ -246,14 +292,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        640,
-        300
+        820,
+        320
       ]
     },
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Loop Campanhas').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').first().json.id }}",
+        "url": "={{ $('Loop Campanhas').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').item.json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -274,7 +320,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
+        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
         "options": {}
       },
       "id": "mark-error",
@@ -282,8 +328,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        640,
-        480
+        820,
+        500
       ]
     }
   ],
@@ -362,6 +408,17 @@
       ]
     },
     "Marcar enviando": {
+      "main": [
+        [
+          {
+            "node": "Preparar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar entrada": {
       "main": [
         [
           {
