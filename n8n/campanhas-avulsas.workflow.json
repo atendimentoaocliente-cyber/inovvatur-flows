@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.supabaseUrl }}/rest/v1/campaigns?select=*,audiences(*)&status=eq.agendada&enviar_em=lte.{{ $now.toUTC().toISO() }}",
+        "url": "={{ $json.supabaseUrl }}/rest/v1/campaigns?select=*,audiences(*)&status=eq.agendada&enviar_em=lte.{{ $now.toUTC().toISO().replace('+00:00','Z') }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
