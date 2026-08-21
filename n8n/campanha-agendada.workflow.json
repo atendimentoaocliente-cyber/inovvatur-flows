@@ -319,31 +319,31 @@
               "id": "e1",
               "name": "texto",
               "type": "string",
-              "value": "={{ $('Preparar envio').item.json.texto }}"
+              "value": "={{ $('Preparar envio').first().json.texto }}"
             },
             {
               "id": "e2",
               "name": "tipo",
               "type": "string",
-              "value": "={{ $('Preparar envio').item.json.tipo }}"
+              "value": "={{ $('Preparar envio').first().json.tipo }}"
             },
             {
               "id": "e3",
               "name": "midia_url",
               "type": "string",
-              "value": "={{ $('Preparar envio').item.json.midia_url }}"
+              "value": "={{ $('Preparar envio').first().json.midia_url }}"
             },
             {
               "id": "e4",
               "name": "mencionar_todos",
               "type": "string",
-              "value": "={{ $('Preparar envio').item.json.mencionar_todos }}"
+              "value": "={{ $('Preparar envio').first().json.mencionar_todos }}"
             },
             {
               "id": "e5",
               "name": "group_ids",
               "type": "array",
-              "value": "={{ $('Preparar envio').item.json.group_ids }}"
+              "value": "={{ $('Preparar envio').first().json.group_ids }}"
             }
           ]
         },
@@ -382,7 +382,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Preparar envio').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').item.json.id }}",
+        "url": "={{ $('Preparar envio').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -403,7 +403,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Preparar envio').item.json.group_ids.length }}, \"enviados\": {{ $('Preparar envio').item.json.group_ids.length }}, \"falhas\": 0 } }",
+        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Preparar envio').first().json.group_ids.length }}, \"enviados\": {{ $('Preparar envio').first().json.group_ids.length }}, \"falhas\": 0 } }",
         "options": {}
       },
       "id": "mark-sent",
@@ -418,7 +418,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Preparar envio').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').item.json.id }}",
+        "url": "={{ $('Preparar envio').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -439,7 +439,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Preparar envio').item.json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Preparar envio').item.json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
+        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Preparar envio').first().json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Preparar envio').first().json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
         "options": {}
       },
       "id": "mark-error",
