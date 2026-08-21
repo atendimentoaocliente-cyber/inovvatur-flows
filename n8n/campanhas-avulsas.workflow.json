@@ -199,31 +199,31 @@
               "id": "e1",
               "name": "texto",
               "type": "string",
-              "value": "={{ $('Loop Campanhas').item.json.texto }}"
+              "value": "={{ $('Loop Campanhas').first().json.texto }}"
             },
             {
               "id": "e2",
               "name": "tipo",
               "type": "string",
-              "value": "={{ $('Loop Campanhas').item.json.tipo }}"
+              "value": "={{ $('Loop Campanhas').first().json.tipo }}"
             },
             {
               "id": "e3",
               "name": "midia_url",
               "type": "string",
-              "value": "={{ $('Loop Campanhas').item.json.midia_url }}"
+              "value": "={{ $('Loop Campanhas').first().json.midia_url }}"
             },
             {
               "id": "e4",
               "name": "mencionar_todos",
               "type": "string",
-              "value": "={{ $('Loop Campanhas').item.json.mencionar_todos }}"
+              "value": "={{ $('Loop Campanhas').first().json.mencionar_todos }}"
             },
             {
               "id": "e5",
               "name": "group_ids",
               "type": "array",
-              "value": "={{ $('Loop Campanhas').item.json.group_ids }}"
+              "value": "={{ $('Loop Campanhas').first().json.group_ids }}"
             }
           ]
         },
@@ -263,7 +263,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Loop Campanhas').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').item.json.id }}",
+        "url": "={{ $('Loop Campanhas').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -284,7 +284,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"enviados\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"falhas\": 0 } }",
+        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"enviados\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"falhas\": 0 } }",
         "options": {}
       },
       "id": "mark-sent",
@@ -299,7 +299,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Loop Campanhas').item.json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').item.json.id }}",
+        "url": "={{ $('Loop Campanhas').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Loop Campanhas').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -320,7 +320,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Loop Campanhas').item.json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
+        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Loop Campanhas').first().json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
         "options": {}
       },
       "id": "mark-error",
