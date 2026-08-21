@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Audience, Campaign, CampaignType, Group } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
+import { MultiDatePicker, type DateEntry } from '@/components/MultiDatePicker';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { estimateDuration, formatDuration } from '@/lib/message';
 
@@ -94,6 +95,14 @@ function NovaCampanha() {
   const [mencionar, setMencionar] = useState(false);
   const [agendar, setAgendar] = useState(true);
   const [enviarEm, setEnviarEm] = useState('');
+
+  // Multi-date scheduling (create mode only). When ON, the single datetime input
+  // and the Agendar/Enviar-agora control are replaced by <MultiDatePicker>; every
+  // selected date fires its own POST /api/campaigns with the shared base fields.
+  const [multiDia, setMultiDia] = useState(false);
+  const [multiEntries, setMultiEntries] = useState<DateEntry[]>([]);
+  const [multiTime, setMultiTime] = useState('09:00');
+  const [multiProgress, setMultiProgress] = useState<string | null>(null);
 
   // Audience picker
   const [audienceMode, setAudienceMode] = useState<AudienceMode>('todos');
@@ -358,6 +367,92 @@ function NovaCampanha() {
     } catch {
       setSubmitError('Sem conexão com o servidor. Tente de novo.');
     } finally {
+      setBusy(false);
+    }
+  }
+
+  // Multi-date submit: one POST per selected date, sharing the base fields. A date
+  // with its own message wins; empty ones inherit the base message. Posts run
+  // sequentially so progress is honest and a partial failure is recoverable.
+  async function submitMulti() {
+    setSubmitError(null);
+    const now = new Date();
+    const sorted = [...multiEntries].sort((a, b) =>
+      (a.date + a.time).localeCompare(b.date + b.time),
+    );
+
+    if (sorted.length === 0) {
+      setSubmitError('Escolha pelo menos uma data.');
+      return;
+    }
+
+    const firstISO = new Date(`${sorted[0].date}T${sorted[0].time}`).toISOString();
+    const map = Object.fromEntries(
+      validateCampaign(
+        {
+          nome,
+          tipo,
+          mensagem,
+          midia_url: midiaUrl,
+          mencionar_todos: mencionar,
+          agendar: true,
+          enviar_em: firstISO,
+        },
+        now,
+      ).map((e) => [e.field, e.message]),
+    );
+    if (audienceMode === 'salvo' && !selectedAudienceId) {
+      map.audience = 'Escolha um público salvo para continuar.';
+    }
+    if (Object.keys(map).length) {
+      setErrors(map);
+      return;
+    }
+    // Every date+time must still be in the future when we submit.
+    const anyPast = sorted.some(
+      (e) => new Date(`${e.date}T${e.time}`).getTime() <= now.getTime(),
+    );
+    if (anyPast) {
+      setSubmitError('Todas as datas precisam estar no futuro. Ajuste os horários.');
+      return;
+    }
+
+    setErrors({});
+    setBusy(true);
+    const { audience_id, group_ids } = resolveAudience();
+    const total = sorted.length;
+    let failures = 0;
+    try {
+      for (let i = 0; i < total; i++) {
+        const entry = sorted[i];
+        setMultiProgress(`Criando ${i + 1} de ${total}…`);
+        const draft: CampaignDraft = {
+          nome,
+          tipo,
+          mensagem: entry.mensagem?.trim() || mensagem,
+          midia_url: midiaUrl,
+          mencionar_todos: mencionar,
+          agendar: true,
+          enviar_em: new Date(`${entry.date}T${entry.time}`).toISOString(),
+        };
+        try {
+          const res = await fetch('/api/campaigns', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draft, asDraft: false, audience_id, group_ids }),
+          });
+          if (!res.ok) failures++;
+        } catch {
+          failures++;
+        }
+      }
+      if (failures === 0) {
+        router.push('/campanhas');
+        return;
+      }
+      setSubmitError(`${failures} de ${total} falharam. As demais foram agendadas — revise e tente de novo.`);
+    } finally {
+      setMultiProgress(null);
       setBusy(false);
     }
   }
@@ -632,24 +727,51 @@ function NovaCampanha() {
           </Field>
 
           <Field label="Agendamento" error={errors.enviar_em}>
-            <div className="mb-3 flex gap-2">
-              <SegButton on={agendar} onClick={() => setAgendar(true)}>
-                Agendar
-              </SegButton>
-              <SegButton on={!agendar} onClick={() => setAgendar(false)}>
-                Enviar agora
-              </SegButton>
-            </div>
-            {agendar && (
-              <input
-                type="datetime-local"
-                value={enviarEm}
-                onChange={(e) => {
-                  setEnviarEm(e.target.value);
+            {!editing && (
+              <label className="mb-3 flex cursor-pointer items-center justify-between rounded-xl border border-border bg-surface2 px-3.5 py-3">
+                <span className="text-sm">
+                  <span className="font-semibold">Vários dias</span>
+                  <span className="mt-0.5 block font-normal text-muted">
+                    agenda a mesma campanha em várias datas de uma vez
+                  </span>
+                </span>
+                <Switch checked={multiDia} onChange={setMultiDia} label="Vários dias" />
+              </label>
+            )}
+
+            {multiDia && !editing ? (
+              <MultiDatePicker
+                entries={multiEntries}
+                onChange={(next) => {
+                  setMultiEntries(next);
                   clearError('enviar_em');
                 }}
-                className={`${inputCls} [color-scheme:dark]`}
+                baseMensagem={mensagem}
+                defaultTime={multiTime}
+                onDefaultTimeChange={setMultiTime}
               />
+            ) : (
+              <>
+                <div className="mb-3 flex gap-2">
+                  <SegButton on={agendar} onClick={() => setAgendar(true)}>
+                    Agendar
+                  </SegButton>
+                  <SegButton on={!agendar} onClick={() => setAgendar(false)}>
+                    Enviar agora
+                  </SegButton>
+                </div>
+                {agendar && (
+                  <input
+                    type="datetime-local"
+                    value={enviarEm}
+                    onChange={(e) => {
+                      setEnviarEm(e.target.value);
+                      clearError('enviar_em');
+                    }}
+                    className={`${inputCls} [color-scheme:dark]`}
+                  />
+                )}
+              </>
             )}
           </Field>
 
@@ -662,6 +784,12 @@ function NovaCampanha() {
             </span>
           </div>
 
+          {multiProgress && (
+            <p className="mt-4 text-sm text-[#b9c6e6]" role="status" aria-live="polite">
+              {multiProgress}
+            </p>
+          )}
+
           {submitError && (
             <p className="mt-4 text-sm text-[#ffb183]" role="alert">
               {submitError}
@@ -671,17 +799,26 @@ function NovaCampanha() {
           <div className="mt-[22px] flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => submit(false)}
-              disabled={busy || uploading || loading}
+              onClick={() => (multiDia && !editing ? void submitMulti() : submit(false))}
+              disabled={
+                busy ||
+                uploading ||
+                loading ||
+                (multiDia && !editing && multiEntries.length === 0)
+              }
               className="rounded-xl bg-blue px-5 py-[13px] text-sm font-semibold text-white shadow-[0_6px_20px_rgba(1,71,255,.35)] transition-colors hover:bg-[#0a54ff] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
               {busy
-                ? 'Salvando…'
+                ? multiDia && !editing
+                  ? (multiProgress ?? 'Agendando…')
+                  : 'Salvando…'
                 : editing
                   ? '💾 Salvar alterações'
-                  : agendar
-                    ? '📅 Agendar campanha'
-                    : '🚀 Enviar agora'}
+                  : multiDia
+                    ? `📅 Agendar ${multiEntries.length} campanha${multiEntries.length === 1 ? '' : 's'}`
+                    : agendar
+                      ? '📅 Agendar campanha'
+                      : '🚀 Enviar agora'}
             </button>
             {!editing && (
               <button
