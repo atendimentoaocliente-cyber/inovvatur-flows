@@ -55,7 +55,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const b = $json.body || $json;\nconst id = b.id || (b.record && b.record.id);\nif (!id) throw new Error('Payload sem id da campanha.');\nreturn [{ json: { id, supabaseUrl: $('Config').first().json.supabaseUrl, supabaseKey: $('Config').first().json.supabaseKey } }];"
+        "jsCode": "const wh = $('Recebe agendamento').first().json;\nlet b = (wh && wh.body != null) ? wh.body : wh;\nif (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = {}; } }\nconst id = b && (b.id || (b.record && b.record.id));\nif (!id) throw new Error('Payload sem id. Recebido do webhook: ' + JSON.stringify(wh).slice(0, 400));\nconst cfg = $('Config').first().json;\nreturn [{ json: { id, supabaseUrl: cfg.supabaseUrl, supabaseKey: cfg.supabaseKey } }];"
       },
       "id": "extract",
       "name": "Extrair id",
@@ -79,10 +79,6 @@
             {
               "name": "Authorization",
               "value": "=Bearer {{ $('Config').first().json.supabaseKey }}"
-            },
-            {
-              "name": "Accept",
-              "value": "application/vnd.pgrst.object+json"
             }
           ]
         },
@@ -174,10 +170,6 @@
             {
               "name": "Authorization",
               "value": "=Bearer {{ $('Config').first().json.supabaseKey }}"
-            },
-            {
-              "name": "Accept",
-              "value": "application/vnd.pgrst.object+json"
             }
           ]
         },
