@@ -382,7 +382,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Preparar envio').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').first().json.id }}",
+        "url": "={{ $('Extrair id').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Extrair id').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -403,7 +403,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\", \"resultado\": { \"total\": {{ $('Preparar envio').first().json.group_ids.length }}, \"enviados\": {{ $('Preparar envio').first().json.group_ids.length }}, \"falhas\": 0 } }",
+        "jsonBody": "={ \"status\": \"enviada\", \"enviado_em\": \"{{ $now.toUTC().toISO() }}\" }",
         "options": {}
       },
       "id": "mark-sent",
@@ -418,7 +418,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('Preparar envio').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Preparar envio').first().json.id }}",
+        "url": "={{ $('Extrair id').first().json.supabaseUrl }}/rest/v1/campaigns?id=eq.{{ $('Extrair id').first().json.id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -439,7 +439,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"total\": {{ $('Preparar envio').first().json.group_ids.length }}, \"enviados\": 0, \"falhas\": {{ $('Preparar envio').first().json.group_ids.length }}, \"erro\": \"falha ao chamar o SUB de envio\" } }",
+        "jsonBody": "={ \"status\": \"erro\", \"resultado\": { \"erro\": \"falha no envio\" } }",
         "options": {}
       },
       "id": "mark-error",
