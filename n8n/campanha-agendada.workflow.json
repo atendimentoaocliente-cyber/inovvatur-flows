@@ -209,15 +209,6 @@
                 "type": "string",
                 "operation": "equals"
               }
-            },
-            {
-              "id": "x3",
-              "leftValue": "={{ $json.enviar_em }}",
-              "rightValue": "={{ $('Ler campanha').first().json.enviar_em }}",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
             }
           ]
         },
@@ -231,7 +222,7 @@
         200,
         240
       ],
-      "notes": "So envia se ainda estiver agendada E o horario nao tiver sido editado (senao uma nova execucao cuida)."
+      "notes": "Envia se ainda estiver agendada (se voce cancelou nesse meio tempo, o status muda e ele nao envia)."
     },
     {
       "parameters": {},
