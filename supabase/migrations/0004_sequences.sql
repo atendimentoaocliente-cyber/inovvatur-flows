@@ -27,7 +27,7 @@ select 'Academy', 'academy', $json$[
   {
     "id": "s1",
     "ordem": 0,
-    "dia_offset": -1,
+    "dia_offset": -3,
     "hora_tipo": "fixo",
     "hora_fixa": "08:00",
     "offset_min": null,
@@ -39,7 +39,7 @@ select 'Academy', 'academy', $json$[
   {
     "id": "s2",
     "ordem": 1,
-    "dia_offset": -1,
+    "dia_offset": -2,
     "hora_tipo": "fixo",
     "hora_fixa": "12:00",
     "offset_min": null,

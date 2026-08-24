@@ -8,6 +8,7 @@ const diaOffsetOptions: { value: number; label: string }[] = [
   { value: 0, label: 'No dia da aula' },
   { value: -1, label: '1 dia antes' },
   { value: -2, label: '2 dias antes' },
+  { value: -3, label: '3 dias antes' },
 ];
 
 const offsetMinOptions: { value: number; label: string }[] = [
