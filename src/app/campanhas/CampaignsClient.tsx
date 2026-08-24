@@ -5,8 +5,10 @@ import Link from 'next/link';
 import type { Campaign, CampaignStatus } from '@/lib/types';
 import { CampaignRow, type ActionResult } from '@/components/CampaignRow';
 import { formatWhen } from '@/lib/format';
+import { CATEGORIAS, type CategoriaKey } from '@/lib/categories';
 
 type Tab = 'agendadas' | 'historico' | 'rascunhos';
+type CatTab = 'todas' | CategoriaKey;
 
 const tabs: { key: Tab; label: string }[] = [
   { key: 'agendadas', label: 'Agendadas' },
@@ -27,27 +29,44 @@ const emptyMessage: Record<Tab, string> = {
 };
 
 export function CampaignsClient({ initial }: { initial: Campaign[] }) {
+  const [cat, setCat] = useState<CatTab>('todas');
   const [tab, setTab] = useState<Tab>('agendadas');
   // Own the list so row actions can mutate it in place (update/remove) without a full reload.
   const [campaigns, setCampaigns] = useState<Campaign[]>(initial);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Category tab counts are global (all statuses) — a truthful "how many live in each product".
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = { todas: campaigns.length };
+    for (const c of CATEGORIAS) counts[c.key] = 0;
+    for (const camp of campaigns) counts[camp.categoria] = (counts[camp.categoria] ?? 0) + 1;
+    return counts;
+  }, [campaigns]);
+
+  // Category is the outer filter; status tabs and stats both work within it.
+  const inCategory = useMemo(
+    () => (cat === 'todas' ? campaigns : campaigns.filter((c) => c.categoria === cat)),
+    [campaigns, cat],
+  );
+
+  // Stats reflect the selected category (global when "Todas"), so the tiles always
+  // match the list below them.
   const stats = useMemo(() => {
-    const upcoming = campaigns
+    const upcoming = inCategory
       .filter((c) => (c.status === 'agendada' || c.status === 'enviando') && c.enviar_em)
       .map((c) => c.enviar_em as string)
       .sort();
     return {
       proximo: upcoming.length ? formatWhen(upcoming[0]) : '—',
-      agendadas: campaigns.filter((c) => c.status === 'agendada').length,
-      enviadas: campaigns.filter((c) => c.status === 'enviada').length,
-      rascunhos: campaigns.filter((c) => c.status === 'rascunho').length,
+      agendadas: inCategory.filter((c) => c.status === 'agendada').length,
+      enviadas: inCategory.filter((c) => c.status === 'enviada').length,
+      rascunhos: inCategory.filter((c) => c.status === 'rascunho').length,
     };
-  }, [campaigns]);
+  }, [inCategory]);
 
   const rows = useMemo(
-    () => campaigns.filter((c) => tabFilter[tab](c.status)),
-    [campaigns, tab],
+    () => inCategory.filter((c) => tabFilter[tab](c.status)),
+    [inCategory, tab],
   );
 
   async function handleDelete(id: string): Promise<ActionResult> {
@@ -110,6 +129,26 @@ export function CampaignsClient({ initial }: { initial: Campaign[] }) {
         >
           ＋ Nova campanha
         </Link>
+      </div>
+
+      <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Categorias">
+        <CatPill
+          on={cat === 'todas'}
+          count={catCounts.todas}
+          onClick={() => setCat('todas')}
+        >
+          Todas
+        </CatPill>
+        {CATEGORIAS.map((c) => (
+          <CatPill
+            key={c.key}
+            on={cat === c.key}
+            count={catCounts[c.key] ?? 0}
+            onClick={() => setCat(c.key)}
+          >
+            {c.label}
+          </CatPill>
+        ))}
       </div>
 
       <div className="mb-[26px] grid grid-cols-2 gap-3.5 lg:grid-cols-4">
@@ -184,6 +223,41 @@ export function CampaignsClient({ initial }: { initial: Campaign[] }) {
         As campanhas são despachadas pelo motor n8n nos horários agendados.
       </p>
     </div>
+  );
+}
+
+function CatPill({
+  on,
+  count,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  count: number;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={on}
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+        on
+          ? 'border-blue bg-blue text-white shadow-[0_6px_20px_rgba(1,71,255,.35)]'
+          : 'border-border bg-surface text-muted hover:border-blue2 hover:text-ink'
+      }`}
+    >
+      {children}
+      <span
+        className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+          on ? 'bg-white/20 text-white' : 'bg-surface2 text-muted'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

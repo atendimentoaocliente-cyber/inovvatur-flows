@@ -6,6 +6,7 @@ import type { Campaign, CampaignStatus, CampaignType } from '@/lib/types';
 import { campaignActions, type CampaignAction } from '@/lib/campaign-actions';
 import { StatusChip } from './StatusChip';
 import { formatWhen } from '@/lib/format';
+import { categoriaLabel } from '@/lib/categories';
 
 const typeIcon: Record<CampaignType, string> = {
   texto: '💬',
@@ -80,7 +81,12 @@ export function CampaignRow({
           {typeIcon[c.tipo]}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{c.nome}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-semibold">{c.nome}</span>
+            <span className="shrink-0 rounded-full border border-border bg-surface2 px-2 py-0.5 text-[11px] font-medium text-muted">
+              {categoriaLabel(c.categoria)}
+            </span>
+          </div>
           <div className="mt-0.5 truncate text-xs text-muted">{meta}</div>
         </div>
       </div>
