@@ -27,6 +27,28 @@ export interface CampaignResult {
   erro?: string;
 }
 
+export interface SequenceStep {
+  id: string;
+  ordem: number;
+  dia_offset: number;            // 0 = dia da aula, -1 = 1 dia antes, -2 = 2 dias antes
+  hora_tipo: 'fixo' | 'relativo';
+  hora_fixa: string | null;      // 'HH:MM' quando fixo
+  offset_min: number | null;     // minutos vs. hora da aula quando relativo
+  mensagem: string;
+  tipo: CampaignType;
+  midia_url: string | null;
+  mencionar_todos: boolean;
+}
+
+export interface Sequence {
+  id: string;
+  nome: string;
+  categoria: CategoriaKey;
+  steps: SequenceStep[];
+  criado_em: string;
+  atualizado_em: string;
+}
+
 export interface Campaign {
   id: string;
   nome: string;
