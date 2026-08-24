@@ -12,6 +12,52 @@ export function GroupsClient({ initial }: { initial: Group[] }) {
   const [nome, setNome] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-row in-flight state and inline errors, keyed by group id, so one row's
+  // toggle/delete doesn't disable or fail silently for the rest of the list.
+  const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
+  const [rowError, setRowError] = useState<Record<string, string | null>>({});
+
+  async function toggleAtivo(g: Group) {
+    setRowBusy((b) => ({ ...b, [g.id]: true }));
+    setRowError((e) => ({ ...e, [g.id]: null }));
+    try {
+      const res = await fetch(`/api/groups/${g.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: !g.ativo }),
+      });
+      if (res.ok) {
+        const updated = (await res.json()) as Group;
+        setGroups((gs) => gs.map((x) => (x.id === g.id ? updated : x)));
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setRowError((e) => ({ ...e, [g.id]: body.error ?? 'Não foi possível atualizar o grupo.' }));
+      }
+    } catch {
+      setRowError((e) => ({ ...e, [g.id]: 'Sem conexão com o servidor. Tente de novo.' }));
+    } finally {
+      setRowBusy((b) => ({ ...b, [g.id]: false }));
+    }
+  }
+
+  async function removeGroup(g: Group) {
+    if (!window.confirm(`Excluir o grupo "${g.nome}"? Essa ação não pode ser desfeita.`)) return;
+    setRowBusy((b) => ({ ...b, [g.id]: true }));
+    setRowError((e) => ({ ...e, [g.id]: null }));
+    try {
+      const res = await fetch(`/api/groups/${g.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setGroups((gs) => gs.filter((x) => x.id !== g.id));
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setRowError((e) => ({ ...e, [g.id]: body.error ?? 'Não foi possível excluir o grupo.' }));
+        setRowBusy((b) => ({ ...b, [g.id]: false }));
+      }
+    } catch {
+      setRowError((e) => ({ ...e, [g.id]: 'Sem conexão com o servidor. Tente de novo.' }));
+      setRowBusy((b) => ({ ...b, [g.id]: false }));
+    }
+  }
 
   async function add() {
     setSaving(true);
@@ -91,26 +137,85 @@ export function GroupsClient({ initial }: { initial: Group[] }) {
             Nenhum grupo cadastrado ainda. Adicione o primeiro acima.
           </div>
         ) : (
-          groups.map((g) => (
-            <div
-              key={g.id}
-              className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{g.nome}</div>
-                <div className="mt-0.5 truncate font-mono text-xs text-muted">{g.group_id}</div>
-              </div>
-              <span
-                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                  g.ativo ? 'border-green/30 text-green' : 'border-border text-muted'
-                }`}
+          groups.map((g) => {
+            const busy = Boolean(rowBusy[g.id]);
+            const rowErr = rowError[g.id];
+            return (
+              <div
+                key={g.id}
+                className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0"
               >
-                {g.ativo ? 'ativo' : 'inativo'}
-              </span>
-            </div>
-          ))
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{g.nome}</div>
+                  <div className="mt-0.5 truncate font-mono text-xs text-muted">{g.group_id}</div>
+                  {rowErr && (
+                    <p className="mt-1 text-xs text-[#ffb183]" role="alert">
+                      {rowErr}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    g.ativo ? 'border-green/30 text-green' : 'border-border text-muted'
+                  }`}
+                >
+                  {g.ativo ? 'ativo' : 'inativo'}
+                </span>
+                <Switch
+                  checked={g.ativo}
+                  disabled={busy}
+                  onChange={() => void toggleAtivo(g)}
+                  label={g.ativo ? `Desativar ${g.nome}` : `Ativar ${g.nome}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void removeGroup(g)}
+                  disabled={busy}
+                  aria-label={`Excluir ${g.nome}`}
+                  title="Excluir grupo"
+                  className="shrink-0 rounded-lg border border-border p-2 text-sm text-muted transition-colors hover:border-[#ffb183]/40 hover:text-[#ffb183] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  🗑
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
+  );
+}
+
+// Matches the on-brand toggle used for "Mencionar todos" in the campaign composer
+// (src/app/campanhas/nova/page.tsx), plus a disabled state for in-flight requests.
+function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-[42px] shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? 'bg-blue' : 'bg-[#2a3550]'
+      }`}
+    >
+      <span
+        className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
+          checked ? 'left-[21px]' : 'left-[3px]'
+        }`}
+      />
+    </button>
   );
 }
