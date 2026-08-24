@@ -6,16 +6,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { Audience, Campaign, CampaignType, Group } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
 import { MultiDatePicker, type DateEntry } from '@/components/MultiDatePicker';
+import {
+  AudiencePicker,
+  resolveAudience,
+  GROUP_COUNT_HINT,
+  type AudienceMode,
+} from '@/components/AudiencePicker';
+import { Field, SegButton, Switch, inputCls } from '@/components/ui';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { estimateDuration, formatDuration } from '@/lib/message';
 import { CATEGORIAS, isCategoria, type CategoriaKey } from '@/lib/categories';
-
-// Fallback for the throttling copy when we don't yet know the real active-group
-// count (fetch pending or failed). The n8n dispatcher uses the true count at send
-// time — this only drives the "~N grupos ≈ …" estimate line.
-const GROUP_COUNT_HINT = 18;
-
-type AudienceMode = 'todos' | 'salvo' | 'grupos';
 
 const tipos: { key: CampaignType; label: string }[] = [
   { key: 'texto', label: 'Só texto' },
@@ -206,14 +206,6 @@ function NovaCampanha() {
     [audiences, selectedAudienceId],
   );
 
-  const filteredGroups = useMemo(() => {
-    const q = groupQuery.trim().toLowerCase();
-    if (!q) return groups;
-    return groups.filter(
-      (g) => g.nome.toLowerCase().includes(q) || g.group_id.toLowerCase().includes(q),
-    );
-  }, [groups, groupQuery]);
-
   // Effective group count drives the throttling estimate for the chosen audience.
   const effectiveCount =
     audienceMode === 'grupos'
@@ -245,15 +237,6 @@ function NovaCampanha() {
     setSelectedGroupIds((s) =>
       s.includes(groupId) ? s.filter((x) => x !== groupId) : [...s, groupId],
     );
-  }
-
-  // Resolve the picker into the API's { audience_id, group_ids } shape.
-  function resolveAudience(): { audience_id: string | null; group_ids: string[] | null } {
-    if (audienceMode === 'salvo') return { audience_id: selectedAudienceId, group_ids: null };
-    if (audienceMode === 'grupos') {
-      return { audience_id: null, group_ids: selectedGroupIds.length ? selectedGroupIds : null };
-    }
-    return { audience_id: null, group_ids: null };
   }
 
   async function uploadFile(file: File) {
@@ -312,7 +295,7 @@ function NovaCampanha() {
     }
     setErrors({});
     setBusy(true);
-    const { audience_id, group_ids } = resolveAudience();
+    const { audience_id, group_ids } = resolveAudience(audienceMode, selectedAudienceId, selectedGroupIds);
     try {
       if (editing) {
         const enviar_em = agendar && enviarEm ? new Date(enviarEm).toISOString() : new Date().toISOString();
@@ -424,7 +407,7 @@ function NovaCampanha() {
 
     setErrors({});
     setBusy(true);
-    const { audience_id, group_ids } = resolveAudience();
+    const { audience_id, group_ids } = resolveAudience(audienceMode, selectedAudienceId, selectedGroupIds);
     const total = sorted.length;
     let failures = 0;
     try {
@@ -597,154 +580,20 @@ function NovaCampanha() {
           </Field>
 
           {/* AUDIENCE PICKER */}
-          <Field label="Público" error={errors.audience}>
-            <div className="mb-3 flex flex-wrap gap-2">
-              <SegButton
-                on={audienceMode === 'todos'}
-                onClick={() => {
-                  setAudienceMode('todos');
-                  clearError('audience');
-                }}
-              >
-                🌐 Todos os grupos
-              </SegButton>
-              <SegButton on={audienceMode === 'salvo'} onClick={() => setAudienceMode('salvo')}>
-                ⭐ Público salvo
-              </SegButton>
-              <SegButton
-                on={audienceMode === 'grupos'}
-                onClick={() => {
-                  setAudienceMode('grupos');
-                  clearError('audience');
-                }}
-              >
-                ✅ Grupos específicos
-              </SegButton>
-            </div>
-
-            {audienceMode === 'todos' && (
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-surface2 px-3.5 py-[13px]">
-                <span className="font-display text-xl font-semibold leading-none">🌐</span>
-                <div className="text-sm">
-                  <div className="font-semibold">Todos os grupos ativos</div>
-                  <div className="text-xs text-muted">
-                    {activeGroups.length ? `${activeCount} grupos` : 'definido no envio'} · da aba “Grupos”
-                  </div>
-                </div>
-                <Link
-                  href="/publicos"
-                  className="ml-auto shrink-0 text-[13px] font-semibold text-blue2 transition-colors hover:text-ink"
-                >
-                  Gerenciar ›
-                </Link>
-              </div>
-            )}
-
-            {audienceMode === 'salvo' && (
-              <div>
-                {audiences.length === 0 ? (
-                  <div className="rounded-xl border border-border bg-surface2 px-3.5 py-3 text-[13px] text-muted">
-                    Nenhum público salvo ainda.{' '}
-                    <Link href="/publicos" className="font-semibold text-blue2 hover:text-ink">
-                      Criar um público ›
-                    </Link>
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      aria-label="Público salvo"
-                      value={selectedAudienceId ?? ''}
-                      onChange={(e) => {
-                        setSelectedAudienceId(e.target.value || null);
-                        clearError('audience');
-                      }}
-                      className={`${inputCls} [color-scheme:dark] cursor-pointer`}
-                    >
-                      <option value="">Escolha um público…</option>
-                      {audiences.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.nome} · {audienceGroupCount(a)} grupos
-                        </option>
-                      ))}
-                    </select>
-                    {selectedAudience && (
-                      <div className="mt-2 text-[13px] text-muted">
-                        Público:{' '}
-                        <b className="text-ink">{selectedAudience.nome}</b> (
-                        {audienceGroupCount(selectedAudience)})
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {audienceMode === 'grupos' && (
-              <div>
-                <input
-                  aria-label="Buscar grupo pelo nome ou ID"
-                  value={groupQuery}
-                  onChange={(e) => setGroupQuery(e.target.value)}
-                  placeholder="🔎 Buscar grupo pelo nome ou ID…"
-                  className={`${inputCls} mb-3 py-2.5`}
-                />
-                <div className="max-h-72 overflow-auto rounded-xl border border-border">
-                  {groups.length === 0 ? (
-                    <div className="px-3.5 py-6 text-sm text-muted">
-                      Nenhum grupo cadastrado. Adicione grupos primeiro na aba Grupos.
-                    </div>
-                  ) : filteredGroups.length === 0 ? (
-                    <div className="px-3.5 py-6 text-sm text-muted">
-                      Nenhum grupo encontrado para “{groupQuery}”.
-                    </div>
-                  ) : (
-                    filteredGroups.map((g) => (
-                      <GroupRow
-                        key={g.id}
-                        group={g}
-                        checked={selectedGroupIds.includes(g.group_id)}
-                        onToggle={() => toggleGroup(g.group_id)}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Summary line */}
-            <div className="mt-2.5 text-[13px] text-muted">
-              {audienceMode === 'todos' &&
-                (activeGroups.length ? (
-                  <>
-                    <b className="text-ink">{activeCount} grupos</b> · todos os ativos
-                  </>
-                ) : (
-                  <>
-                    <b className="text-ink">Todos os grupos ativos</b> · definido no envio
-                  </>
-                ))}
-              {audienceMode === 'salvo' &&
-                (selectedAudience ? (
-                  <>
-                    Público: <b className="text-ink">{selectedAudience.nome}</b> (
-                    {audienceGroupCount(selectedAudience)})
-                  </>
-                ) : (
-                  <>Nenhum público escolhido</>
-                ))}
-              {audienceMode === 'grupos' &&
-                (selectedGroupIds.length ? (
-                  <>
-                    <b className="text-ink">{selectedGroupIds.length}</b>{' '}
-                    {selectedGroupIds.length === 1
-                      ? 'grupo selecionado'
-                      : 'grupos selecionados'}
-                  </>
-                ) : (
-                  <>Nenhum grupo marcado · envia para todos os ativos</>
-                ))}
-            </div>
-          </Field>
+          <AudiencePicker
+            audiences={audiences}
+            groups={groups}
+            mode={audienceMode}
+            onModeChange={setAudienceMode}
+            selectedAudienceId={selectedAudienceId}
+            onSelectAudience={setSelectedAudienceId}
+            selectedGroupIds={selectedGroupIds}
+            onToggleGroup={toggleGroup}
+            groupQuery={groupQuery}
+            onGroupQueryChange={setGroupQuery}
+            error={errors.audience}
+            onClearError={() => clearError('audience')}
+          />
 
           <Field label="Agendamento" error={errors.enviar_em}>
             {!editing && (
@@ -872,137 +721,5 @@ function NovaCampanha() {
         </div>
       </div>
     </div>
-  );
-}
-
-const inputCls =
-  'w-full rounded-xl border border-border bg-surface2 px-[13px] py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-blue2';
-
-function GroupRow({
-  group,
-  checked,
-  onToggle,
-}: {
-  group: Group;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const selectable = group.ativo;
-  const Wrapper = selectable ? 'label' : 'div';
-  return (
-    <Wrapper
-      className={`flex items-center gap-3 border-t border-border px-3.5 py-3 first:border-t-0 ${
-        selectable ? 'cursor-pointer hover:bg-white/[0.02]' : 'cursor-not-allowed opacity-60'
-      }`}
-    >
-      {selectable && (
-        <input type="checkbox" checked={checked} onChange={onToggle} className="sr-only" />
-      )}
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs text-white transition-colors ${
-          checked ? 'border-blue bg-blue' : 'border-[#33405f]'
-        }`}
-        aria-hidden="true"
-      >
-        {checked ? '✓' : ''}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate text-sm font-medium ${selectable ? '' : 'text-muted'}`}>
-          {group.nome}
-        </span>
-        <span className="mt-0.5 block truncate font-mono text-xs text-muted">{group.group_id}</span>
-      </span>
-      {selectable ? (
-        <span className="ml-auto shrink-0 rounded-full border border-green/30 px-2 py-0.5 text-[11px] text-green">
-          ativo
-        </span>
-      ) : (
-        <span className="ml-auto shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">
-          inativo
-        </span>
-      )}
-    </Wrapper>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label?: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-5 last:mb-0">
-      {label && (
-        <label className="mb-[9px] block text-[13px] font-semibold">
-          {label} {hint && <span className="font-normal text-muted">{hint}</span>}
-        </label>
-      )}
-      {children}
-      {error && (
-        <div className="mt-1.5 text-xs text-[#ffb183]" role="alert">
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SegButton({
-  on,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={`min-w-[80px] flex-1 rounded-xl border px-2 py-[11px] text-center text-[13px] font-semibold transition-colors ${
-        on
-          ? 'border-blue bg-blue/15 text-ink'
-          : 'border-border bg-surface2 text-muted hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Switch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`relative h-6 w-[42px] shrink-0 rounded-full transition-colors ${
-        checked ? 'bg-blue' : 'bg-[#2a3550]'
-      }`}
-    >
-      <span
-        className={`absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
-          checked ? 'left-[21px]' : 'left-[3px]'
-        }`}
-      />
-    </button>
   );
 }

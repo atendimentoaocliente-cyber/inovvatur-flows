@@ -6,6 +6,7 @@ import { Logo } from './Logo';
 
 const items = [
   { href: '/campanhas', label: 'Campanhas', icon: '📣' },
+  { href: '/sequencias', label: 'Sequências', icon: '🔁' },
   { href: '/grupos', label: 'Grupos', icon: '👥' },
   { href: '/publicos', label: 'Públicos', icon: '⭐' },
 ];
