@@ -8,6 +8,7 @@ import { WhatsAppPreview } from '@/components/WhatsAppPreview';
 import { MultiDatePicker, type DateEntry } from '@/components/MultiDatePicker';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { estimateDuration, formatDuration } from '@/lib/message';
+import { CATEGORIAS, isCategoria, type CategoriaKey } from '@/lib/categories';
 
 // Fallback for the throttling copy when we don't yet know the real active-group
 // count (fetch pending or failed). The n8n dispatcher uses the true count at send
@@ -87,6 +88,7 @@ function NovaCampanha() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [tipo, setTipo] = useState<CampaignType>('imagem');
+  const [categoria, setCategoria] = useState<CategoriaKey>('avulsas');
   const [nome, setNome] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [midiaUrl, setMidiaUrl] = useState<string | null>(null);
@@ -154,6 +156,7 @@ function NovaCampanha() {
         }
         const c = (await res.json()) as Campaign;
         setTipo(c.tipo);
+        setCategoria(isCategoria(c.categoria) ? c.categoria : 'avulsas');
         setNome(c.nome ?? '');
         setMensagem(c.mensagem ?? '');
         setMidiaUrl(c.midia_url ?? null);
@@ -286,6 +289,7 @@ function NovaCampanha() {
     const draft: CampaignDraft = {
       nome,
       tipo,
+      categoria,
       mensagem,
       midia_url: midiaUrl,
       mencionar_todos: mencionar,
@@ -321,6 +325,7 @@ function NovaCampanha() {
             midia_url: midiaUrl,
             mencionar_todos: mencionar,
             tipo,
+            categoria,
             enviar_em,
             audience_id,
             group_ids,
@@ -429,6 +434,7 @@ function NovaCampanha() {
         const draft: CampaignDraft = {
           nome,
           tipo,
+          categoria,
           mensagem: entry.mensagem?.trim() || mensagem,
           midia_url: midiaUrl,
           mencionar_todos: mencionar,
@@ -493,6 +499,20 @@ function NovaCampanha() {
               placeholder="Feriado — Bom dia turismo"
               className={inputCls}
             />
+          </Field>
+
+          <Field label="Categoria" hint="· organiza o painel por produto">
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIAS.map((cat) => (
+                <SegButton
+                  key={cat.key}
+                  on={categoria === cat.key}
+                  onClick={() => setCategoria(cat.key)}
+                >
+                  {cat.label}
+                </SegButton>
+              ))}
+            </div>
           </Field>
 
           <Field label="Tipo de conteúdo">
