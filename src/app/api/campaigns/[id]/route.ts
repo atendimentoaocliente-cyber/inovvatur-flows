@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { readJson } from '@/lib/http';
+import { isCategoria } from '@/lib/categories';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +21,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if ('tipo' in patch && !['texto', 'imagem', 'video', 'pdf'].includes(patch.tipo as string)) {
     return NextResponse.json({ errors: [{ field: 'tipo', message: 'Tipo inválido.' }] }, { status: 400 });
   }
+  if ('categoria' in patch && !isCategoria(patch.categoria)) {
+    return NextResponse.json({ errors: [{ field: 'categoria', message: 'Categoria inválida.' }] }, { status: 400 });
+  }
   if (
     'group_ids' in patch &&
     patch.group_ids !== null &&
@@ -28,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ errors: [{ field: 'group_ids', message: 'group_ids inválido.' }] }, { status: 400 });
   }
 
-  const allowed = ['nome', 'mensagem', 'midia_url', 'mencionar_todos', 'enviar_em', 'audience_id', 'group_ids', 'tipo'];
+  const allowed = ['nome', 'mensagem', 'midia_url', 'mencionar_todos', 'enviar_em', 'audience_id', 'group_ids', 'tipo', 'categoria'];
   const clean: Record<string, unknown> = {};
   for (const k of allowed) if (k in patch) clean[k] = patch[k];
   // Client may cancel, or retry (back to agendada). The dispatcher owns enviando/enviada/erro.

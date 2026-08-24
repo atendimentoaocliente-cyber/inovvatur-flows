@@ -1,9 +1,11 @@
 import type { CampaignDraft } from './validation';
 import type { CampaignStatus, CampaignType } from './types';
+import { isCategoria, type CategoriaKey } from './categories';
 
 export interface CampaignRow {
   nome: string;
   tipo: CampaignType;
+  categoria: CategoriaKey;
   mensagem: string;
   midia_url: string | null;
   mencionar_todos: boolean;
@@ -25,6 +27,7 @@ export function buildCampaignRow(
   return {
     nome: String(draft.nome ?? '').trim(),
     tipo: draft.tipo,
+    categoria: isCategoria(draft.categoria) ? draft.categoria : 'avulsas',
     mensagem: String(draft.mensagem ?? '').trim(),
     midia_url: draft.midia_url ?? null,
     mencionar_todos: Boolean(draft.mencionar_todos),

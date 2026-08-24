@@ -41,4 +41,10 @@ describe('buildCampaignRow', () => {
     const row = buildCampaignRow(draft, null, [], now, { asDraft: false });
     expect(row.group_ids).toBeNull();
   });
+  it('defaults categoria to avulsas when absent/invalid', () => {
+    expect(buildCampaignRow(draft, null, null, now, { asDraft: false }).categoria).toBe('avulsas');
+  });
+  it('carries a valid categoria', () => {
+    expect(buildCampaignRow({ ...draft, categoria: 'p360' }, null, null, now, { asDraft: false }).categoria).toBe('p360');
+  });
 });

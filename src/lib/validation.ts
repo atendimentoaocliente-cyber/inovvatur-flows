@@ -1,8 +1,10 @@
 import type { CampaignType } from './types';
+import type { CategoriaKey } from './categories';
 
 export interface CampaignDraft {
   nome: string;
   tipo: CampaignType;
+  categoria?: CategoriaKey;
   mensagem: string;
   midia_url: string | null;
   mencionar_todos: boolean;

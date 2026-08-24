@@ -1,3 +1,5 @@
+import type { CategoriaKey } from './categories';
+
 export type CampaignType = 'texto' | 'imagem' | 'video' | 'pdf';
 export type CampaignStatus =
   | 'rascunho' | 'agendada' | 'enviando' | 'enviada' | 'cancelada' | 'erro';
@@ -29,6 +31,7 @@ export interface Campaign {
   id: string;
   nome: string;
   tipo: CampaignType;
+  categoria: CategoriaKey;
   mensagem: string;
   midia_url: string | null;
   mencionar_todos: boolean;
