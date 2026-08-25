@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { holidaysBR } from '@/lib/holidays';
+import type { CampaignType } from '@/lib/types';
 
 export interface DateEntry {
   /** ISO calendar date, YYYY-MM-DD. */
@@ -10,6 +11,33 @@ export interface DateEntry {
   time: string;
   /** Optional per-date override; empty/undefined inherits the base message. */
   mensagem?: string;
+  /** Optional per-date media type override; undefined inherits the base tipo+media. */
+  tipo?: CampaignType;
+  /** Uploaded media URL for this date's override (imagem/video/pdf only). */
+  midia_url?: string | null;
+}
+
+const midiaTipos: { key: CampaignType; label: string }[] = [
+  { key: 'texto', label: 'Texto' },
+  { key: 'imagem', label: 'Imagem' },
+  { key: 'video', label: 'Vídeo' },
+  { key: 'pdf', label: 'PDF' },
+];
+
+const acceptByTipo: Record<Exclude<CampaignType, 'texto'>, string> = {
+  imagem: 'image/jpeg,image/png,image/webp',
+  video: 'video/mp4',
+  pdf: 'application/pdf',
+};
+
+// Media filenames come back URL-encoded; a malformed %-sequence would throw, so
+// fall back to the raw value instead of crashing the composer.
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 // Local YYYY-MM-DD for "today" so the browser's timezone can't shift the day.
@@ -44,16 +72,20 @@ export function MultiDatePicker({
   baseMensagem,
   defaultTime,
   onDefaultTimeChange,
+  onUploadFile,
 }: {
   entries: DateEntry[];
   onChange: (next: DateEntry[]) => void;
   baseMensagem: string;
   defaultTime: string;
   onDefaultTimeChange: (t: string) => void;
+  onUploadFile: (file: File) => Promise<string | null>;
 }): React.JSX.Element {
   const today = useMemo(() => todayIso(), []);
   const [customDate, setCustomDate] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [uploadingByDate, setUploadingByDate] = useState<Record<string, boolean>>({});
+  const [uploadErrorByDate, setUploadErrorByDate] = useState<Record<string, string>>({});
 
   const selected = useMemo(() => new Set(entries.map((e) => e.date)), [entries]);
 
@@ -83,6 +115,51 @@ export function MultiDatePicker({
 
   function setEntryMensagem(date: string, mensagem: string) {
     onChange(entries.map((e) => (e.date === date ? { ...e, mensagem } : e)));
+  }
+
+  // Selecting "Herdar da base" clears the override entirely; picking Texto keeps
+  // the override (so a media-having base can be overridden to text-only) but
+  // drops any uploaded media; picking imagem/video/pdf just sets the type and
+  // waits for a fresh upload.
+  function setEntryTipo(date: string, t: CampaignType | undefined) {
+    onChange(
+      entries.map((e) => {
+        if (e.date !== date) return e;
+        if (t === undefined) return { ...e, tipo: undefined, midia_url: undefined };
+        if (t === 'texto') return { ...e, tipo: t, midia_url: undefined };
+        return { ...e, tipo: t };
+      }),
+    );
+    setUploadErrorByDate((s) => {
+      if (!s[date]) return s;
+      const { [date]: _omit, ...rest } = s;
+      return rest;
+    });
+  }
+
+  function setEntryMidia(date: string, url: string | null) {
+    onChange(entries.map((e) => (e.date === date ? { ...e, midia_url: url } : e)));
+  }
+
+  async function handleDateUpload(date: string, file: File) {
+    setUploadingByDate((s) => ({ ...s, [date]: true }));
+    setUploadErrorByDate((s) => {
+      if (!s[date]) return s;
+      const { [date]: _omit, ...rest } = s;
+      return rest;
+    });
+    try {
+      const url = await onUploadFile(file);
+      if (url) {
+        setEntryMidia(date, url);
+      } else {
+        setUploadErrorByDate((s) => ({ ...s, [date]: 'Não foi possível enviar o arquivo.' }));
+      }
+    } catch {
+      setUploadErrorByDate((s) => ({ ...s, [date]: 'Sem conexão com o servidor. Tente de novo.' }));
+    } finally {
+      setUploadingByDate((s) => ({ ...s, [date]: false }));
+    }
   }
 
   const sorted = useMemo(() => normalize(entries), [entries]);
@@ -191,6 +268,14 @@ export function MultiDatePicker({
           <ul className="space-y-2">
             {sorted.map((entry) => {
               const isOpen = expanded[entry.date] ?? false;
+              const hasCustomMensagem = Boolean(entry.mensagem?.trim());
+              const hasCustomMidia = entry.tipo !== undefined;
+              const isPersonalized = hasCustomMensagem || hasCustomMidia;
+              const dateUploading = uploadingByDate[entry.date] ?? false;
+              const dateUploadError = uploadErrorByDate[entry.date];
+              const entryFileLabel = entry.midia_url
+                ? safeDecode(entry.midia_url.split('/').pop() ?? 'Mídia enviada')
+                : null;
               return (
                 <li
                   key={entry.date}
@@ -217,12 +302,12 @@ export function MultiDatePicker({
                       }
                       aria-expanded={isOpen}
                       className={`ml-auto rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                        entry.mensagem?.trim() || isOpen
+                        isPersonalized || isOpen
                           ? 'border-blue2/50 bg-blue/10 text-blue2'
                           : 'border-border text-muted hover:text-ink'
                       }`}
                     >
-                      {entry.mensagem?.trim() ? '✎ Mensagem própria' : 'Personalizar mensagem'}
+                      {isPersonalized ? '✎ Personalizada' : 'Personalizar mensagem'}
                     </button>
                     <button
                       type="button"
@@ -234,14 +319,110 @@ export function MultiDatePicker({
                     </button>
                   </div>
                   {isOpen && (
-                    <textarea
-                      value={entry.mensagem ?? ''}
-                      onChange={(e) => setEntryMensagem(entry.date, e.target.value)}
-                      rows={3}
-                      placeholder={baseMensagem || 'Herda a mensagem base…'}
-                      aria-label={`Mensagem para ${ddMMyyyy(entry.date)}`}
-                      className="mt-2.5 w-full resize-y rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-muted focus:border-blue2"
-                    />
+                    <div className="mt-2.5 space-y-2.5">
+                      <textarea
+                        value={entry.mensagem ?? ''}
+                        onChange={(e) => setEntryMensagem(entry.date, e.target.value)}
+                        rows={3}
+                        placeholder={baseMensagem || 'Herda a mensagem base…'}
+                        aria-label={`Mensagem para ${ddMMyyyy(entry.date)}`}
+                        className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] leading-relaxed text-ink outline-none placeholder:text-muted focus:border-blue2"
+                      />
+
+                      <div>
+                        <div
+                          id={`mdp-midia-label-${entry.date}`}
+                          className="mb-1.5 text-xs font-semibold text-muted"
+                        >
+                          Mídia desta data
+                        </div>
+                        <div
+                          role="group"
+                          aria-labelledby={`mdp-midia-label-${entry.date}`}
+                          className="flex flex-wrap gap-1.5"
+                        >
+                          <button
+                            type="button"
+                            aria-pressed={entry.tipo === undefined}
+                            onClick={() => setEntryTipo(entry.date, undefined)}
+                            className={`rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                              entry.tipo === undefined
+                                ? 'border-blue bg-blue/15 text-ink'
+                                : 'border-border bg-surface text-muted hover:text-ink'
+                            }`}
+                          >
+                            Herdar da base
+                          </button>
+                          {midiaTipos.map((t) => (
+                            <button
+                              key={t.key}
+                              type="button"
+                              aria-pressed={entry.tipo === t.key}
+                              onClick={() => setEntryTipo(entry.date, t.key)}
+                              className={`rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                                entry.tipo === t.key
+                                  ? 'border-blue bg-blue/15 text-ink'
+                                  : 'border-border bg-surface text-muted hover:text-ink'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {entry.tipo && entry.tipo !== 'texto' && (
+                          <div className="mt-2">
+                            <input
+                              type="file"
+                              id={`mdp-midia-file-${entry.date}`}
+                              accept={acceptByTipo[entry.tipo]}
+                              aria-label={`Mídia para ${ddMMyyyy(entry.date)}`}
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) void handleDateUpload(entry.date, f);
+                                e.target.value = '';
+                              }}
+                            />
+                            <label
+                              htmlFor={`mdp-midia-file-${entry.date}`}
+                              className="block w-full cursor-pointer rounded-lg border border-dashed border-[#2a3550] bg-surface px-3 py-2.5 text-center text-[12.5px] text-muted transition-colors hover:border-blue2"
+                            >
+                              {dateUploading ? (
+                                <span>Enviando…</span>
+                              ) : entryFileLabel ? (
+                                <span className="font-semibold text-green">
+                                  ✓ {entryFileLabel}
+                                </span>
+                              ) : (
+                                <span>
+                                  📎 Clique para enviar{' '}
+                                  {entry.tipo === 'imagem'
+                                    ? '(JPEG, PNG ou WebP)'
+                                    : entry.tipo === 'video'
+                                      ? '(MP4)'
+                                      : '(PDF)'}
+                                </span>
+                              )}
+                            </label>
+                            {entryFileLabel && !dateUploading && (
+                              <button
+                                type="button"
+                                onClick={() => setEntryMidia(entry.date, null)}
+                                className="mt-1.5 text-[12px] font-semibold text-muted underline decoration-dotted hover:text-orange"
+                              >
+                                remover
+                              </button>
+                            )}
+                            {dateUploadError && (
+                              <p className="mt-1.5 text-[12px] text-[#ffb183]" role="alert">
+                                {dateUploadError}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </li>
               );

@@ -47,6 +47,13 @@ function formatBytes(bytes: number): string {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
+// YYYY-MM-DD → dd/MM/yyyy, for naming a date in an error message (no Date, no
+// timezone drift — mirrors MultiDatePicker's own formatter).
+function ddMMyyyy(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 // Stored dates are ISO/UTC; <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm"
 // in the *browser's local* time. Build it from local getters so the wall-clock
 // value the user picked survives the round-trip.
@@ -239,6 +246,22 @@ function NovaCampanha() {
     );
   }
 
+  // Bare upload: POSTs to /api/upload and returns the stored URL, or null on
+  // failure. No side effects on composer state — lets MultiDatePicker reuse the
+  // same endpoint for per-date media without touching the base tipo/midiaUrl.
+  async function uploadFileRaw(file: File): Promise<string | null> {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      return body.url ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async function uploadFile(file: File) {
     setUploading(true);
     clearError('midia_url');
@@ -405,6 +428,20 @@ function NovaCampanha() {
       return;
     }
 
+    // A date with its own tipo overrides the base media entirely; it needs its
+    // own uploaded midia_url unless it was switched to texto.
+    const missingMidia = sorted.find((e) => {
+      const eTipo = e.tipo ?? tipo;
+      const eMidia = e.tipo ? (e.midia_url ?? null) : midiaUrl;
+      return eTipo !== 'texto' && !eMidia;
+    });
+    if (missingMidia) {
+      setSubmitError(
+        `${ddMMyyyy(missingMidia.date)}: envie a mídia dessa data (ou troque para Herdar/Texto).`,
+      );
+      return;
+    }
+
     setErrors({});
     setBusy(true);
     const { audience_id, group_ids } = resolveAudience(audienceMode, selectedAudienceId, selectedGroupIds);
@@ -414,12 +451,14 @@ function NovaCampanha() {
       for (let i = 0; i < total; i++) {
         const entry = sorted[i];
         setMultiProgress(`Criando ${i + 1} de ${total}…`);
+        const eTipo = entry.tipo ?? tipo;
+        const eMidia = entry.tipo ? (entry.midia_url ?? null) : midiaUrl;
         const draft: CampaignDraft = {
           nome,
-          tipo,
+          tipo: eTipo,
           categoria,
           mensagem: entry.mensagem?.trim() || mensagem,
-          midia_url: midiaUrl,
+          midia_url: eMidia,
           mencionar_todos: mencionar,
           agendar: true,
           enviar_em: new Date(`${entry.date}T${entry.time}`).toISOString(),
@@ -618,6 +657,7 @@ function NovaCampanha() {
                 baseMensagem={mensagem}
                 defaultTime={multiTime}
                 onDefaultTimeChange={setMultiTime}
+                onUploadFile={uploadFileRaw}
               />
             ) : (
               <>
