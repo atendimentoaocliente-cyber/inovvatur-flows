@@ -59,7 +59,7 @@ Timezone fixo **America/Sao_Paulo (UTC−03:00)**, coerente com `sequence.ts` e 
 
 `POST /api/recorrencias/refill`:
 
-- Autenticação: header `x-cron-secret` igual a `CRON_SECRET` (env). Sem o segredo configurado, o endpoint só aceita chamadas internas da própria UI (`same-origin`, via a página de recorrências).
+- Autenticação: header `x-cron-secret` (ou `Authorization: Bearer`) igual a `CRON_SECRET` (env). Sem `CRON_SECRET` definido o endpoint fica aberto — a página de recorrências não depende dele (chama a função de refill direto no servidor), então em produção basta definir o segredo.
 - Para cada recorrência `ativo=true`: calcula as ocorrências do horizonte, lê as campanhas já existentes daquela recorrência (`enviar_em` futuro) e insere só as que faltam, com `status='agendada'`, `recorrencia_id`, `nome` = `"<nome> — DD/MM"`, e os campos de conteúdo/público copiados do molde.
 - Nunca agenda no passado.
 - Retorna `{ criadas, porRecorrencia: [{ id, nome, criadas }] }`.

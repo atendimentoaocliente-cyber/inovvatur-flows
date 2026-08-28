@@ -61,8 +61,27 @@ export interface Campaign {
   group_ids: string[] | null;
   enviar_em: string | null;
   status: CampaignStatus;
+  /** Preenchido quando a campanha foi materializada por uma recorrência semanal. */
+  recorrencia_id?: string | null;
   resultado: CampaignResult | null;
   enviado_em: string | null;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export interface Recorrencia {
+  id: string;
+  nome: string;
+  categoria: CategoriaKey;
+  dia_semana: number;            // 0 = domingo … 6 = sábado (Date#getDay())
+  hora: string;                  // 'HH:MM' no relógio de São Paulo
+  tipo: CampaignType;
+  mensagem: string;
+  midia_url: string | null;
+  mencionar_todos: boolean;
+  audience_id: string | null;
+  group_ids: string[] | null;
+  ativo: boolean;
   criado_em: string;
   atualizado_em: string;
 }
