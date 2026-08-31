@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { CampaignType, SequenceStep } from '@/lib/types';
 import { Switch, inputCls } from './ui';
+import { uploadMedia } from '@/lib/upload-client';
 
 const diaOffsetOptions: { value: number; label: string }[] = [
   { value: 0, label: 'No dia da aula' },
@@ -104,23 +105,11 @@ export function SequenceStepRow({
   async function uploadFile(file: File) {
     setUploading(true);
     setUploadError(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      if (res.ok) {
-        const body = (await res.json()) as { url: string };
-        onChange({ midia_url: body.url });
-      } else {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setUploadError(body.error ?? 'Não foi possível enviar o arquivo.');
-      }
-    } catch {
-      setUploadError('Sem conexão com o servidor. Tente de novo.');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
+    const out = await uploadMedia(file);
+    if ('url' in out) onChange({ midia_url: out.url });
+    else setUploadError(out.error);
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   const midiaLabel = step.midia_url ? safeDecode(step.midia_url.split('/').pop() ?? 'Mídia') : null;

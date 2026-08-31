@@ -15,6 +15,7 @@ import {
 import { Field, SegButton, Switch, inputCls } from '@/components/ui';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
 import { estimateDuration, formatDuration } from '@/lib/message';
+import { uploadMedia } from '@/lib/upload-client';
 import { CATEGORIAS, isCategoria, type CategoriaKey } from '@/lib/categories';
 
 const tipos: { key: CampaignType; label: string }[] = [
@@ -246,20 +247,12 @@ function NovaCampanha() {
     );
   }
 
-  // Bare upload: POSTs to /api/upload and returns the stored URL, or null on
-  // failure. No side effects on composer state — lets MultiDatePicker reuse the
-  // same endpoint for per-date media without touching the base tipo/midiaUrl.
+  // Bare upload: envia direto para o Storage e devolve a URL, ou null na falha.
+  // Sem efeito no estado do compositor — deixa o MultiDatePicker reusar o mesmo
+  // caminho para a mídia por data sem mexer no tipo/midiaUrl base.
   async function uploadFileRaw(file: File): Promise<string | null> {
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) return null;
-      return body.url ?? null;
-    } catch {
-      return null;
-    }
+    const out = await uploadMedia(file);
+    return 'url' in out ? out.url : null;
   }
 
   async function uploadFile(file: File) {
@@ -267,27 +260,15 @@ function NovaCampanha() {
     clearError('midia_url');
     setMidiaUrl(null);
     setMidiaMeta(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      if (res.ok) {
-        const body = (await res.json()) as { url: string };
-        setMidiaUrl(body.url);
-        setMidiaMeta({ name: file.name, size: file.size });
-      } else {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setErrors((e) => ({
-          ...e,
-          midia_url: body.error ?? 'Não foi possível enviar o arquivo.',
-        }));
-      }
-    } catch {
-      setErrors((e) => ({ ...e, midia_url: 'Sem conexão com o servidor. Tente de novo.' }));
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
+    const out = await uploadMedia(file);
+    if ('url' in out) {
+      setMidiaUrl(out.url);
+      setMidiaMeta({ name: file.name, size: file.size });
+    } else {
+      setErrors((e) => ({ ...e, midia_url: out.error }));
     }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   async function submit(asDraft: boolean) {

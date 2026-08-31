@@ -9,6 +9,7 @@ import { AudiencePicker, resolveAudience, type AudienceMode } from '@/components
 import { Field, SegButton, Switch, inputCls } from '@/components/ui';
 import { CATEGORIAS, type CategoriaKey } from '@/lib/categories';
 import { DIAS_SEMANA_LABEL, describeRecorrencia } from '@/lib/recurrence';
+import { uploadMedia } from '@/lib/upload-client';
 
 const tipos: { key: CampaignType; label: string }[] = [
   { key: 'texto', label: 'Só texto' },
@@ -128,24 +129,15 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
     clearError('midia_url');
     setMidiaUrl(null);
     setMidiaMeta(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      if (res.ok) {
-        const body = (await res.json()) as { url: string };
-        setMidiaUrl(body.url);
-        setMidiaMeta({ name: file.name, size: file.size });
-      } else {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setErrors((e) => ({ ...e, midia_url: body.error ?? 'Não foi possível enviar o arquivo.' }));
-      }
-    } catch {
-      setErrors((e) => ({ ...e, midia_url: 'Sem conexão com o servidor. Tente de novo.' }));
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
+    const out = await uploadMedia(file);
+    if ('url' in out) {
+      setMidiaUrl(out.url);
+      setMidiaMeta({ name: file.name, size: file.size });
+    } else {
+      setErrors((e) => ({ ...e, midia_url: out.error }));
     }
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   async function submit() {
