@@ -10,6 +10,9 @@ export interface Group {
   nome: string;
   ativo: boolean;
   criado_em: string;
+  /** Conexão (instância da Evolution) que participa deste grupo. Nulo = grupo legado. */
+  connection_id?: string | null;
+  participantes?: number | null;
 }
 
 export interface Audience {
@@ -63,6 +66,8 @@ export interface Campaign {
   status: CampaignStatus;
   /** Preenchido quando a campanha foi materializada por uma recorrência semanal. */
   recorrencia_id?: string | null;
+  /** Por qual conexão a campanha sai. Nulo = o motor escolhe a primeira conectada. */
+  connection_id?: string | null;
   resultado: CampaignResult | null;
   enviado_em: string | null;
   criado_em: string;
@@ -82,6 +87,30 @@ export interface Recorrencia {
   audience_id: string | null;
   group_ids: string[] | null;
   ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+export type ConnectionStatus = 'desconectada' | 'conectando' | 'conectada' | 'erro';
+
+export interface Connection {
+  id: string;
+  nome: string;
+  provider: 'evolution';
+  /** Nome da instância na Evolution — é o que entra nas rotas /message/sendText/{instance}. */
+  instance_name: string;
+  numero: string | null;
+  profile_name: string | null;
+  profile_pic_url: string | null;
+  status: ConnectionStatus;
+  delay_min_seg: number;
+  delay_max_seg: number;
+  limite_diario: number;
+  ativo: boolean;
+  /** A partir de quando esta conexão pode enviar de novo (o anti-bloqueio persistido). */
+  proximo_envio_em: string | null;
+  ultima_sincronizacao: string | null;
+  ultimo_erro: string | null;
   criado_em: string;
   atualizado_em: string;
 }
