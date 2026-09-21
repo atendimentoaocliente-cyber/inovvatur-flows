@@ -85,7 +85,7 @@ export async function promoverCampanhas(
     if (!ganha) continue;
 
     const campanha = ganha as Campaign;
-    const fontes = await carregarFontes(supabase, campanha, conexaoPadrao, avisos);
+    const fontes = await carregarFontes(supabase, campanha, conexaoPadrao);
     const { linhas, avisos: avisosFanout } = montarDestinatarios(campanha, fontes);
     for (const a of avisosFanout) avisos.push(`[${campanha.nome}] ${a}`);
 
@@ -151,7 +151,6 @@ async function carregarFontes(
   supabase: SupabaseClient,
   campanha: Campaign,
   conexaoPadrao: string | null,
-  avisos: string[],
 ) {
   const { data: grupos } = await supabase
     .from('groups')
