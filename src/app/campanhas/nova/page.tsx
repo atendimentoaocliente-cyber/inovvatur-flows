@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { Audience, Campaign, CampaignType, Group } from '@/lib/types';
+import type { Audience, Campaign, CampaignType, Connection, Group } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
 import { MultiDatePicker, type DateEntry } from '@/components/MultiDatePicker';
 import {
@@ -117,6 +117,10 @@ function NovaCampanha() {
   // Audience picker
   const [audienceMode, setAudienceMode] = useState<AudienceMode>('todos');
   const [audiences, setAudiences] = useState<Audience[]>([]);
+  // Conexões da Evolution. Vazio = só existe o motor antigo, e o seletor nem aparece.
+  const [conexoes, setConexoes] = useState<Connection[]>([]);
+  // Nulo = n8n + Z-API (o padrão de sempre). Com um id, a campanha vira do motor novo.
+  const [conexaoId, setConexaoId] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedAudienceId, setSelectedAudienceId] = useState<string | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
@@ -132,9 +136,10 @@ function NovaCampanha() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [audRes, grpRes] = await Promise.allSettled([
+      const [audRes, grpRes, cnxRes] = await Promise.allSettled([
         fetch('/api/audiences'),
         fetch('/api/groups'),
+        fetch('/api/connections'),
       ]);
       if (!alive) return;
       if (audRes.status === 'fulfilled' && audRes.value.ok) {
@@ -142,6 +147,9 @@ function NovaCampanha() {
       }
       if (grpRes.status === 'fulfilled' && grpRes.value.ok) {
         setGroups(((await grpRes.value.json().catch(() => [])) as Group[]) ?? []);
+      }
+      if (cnxRes.status === 'fulfilled' && cnxRes.value.ok) {
+        setConexoes(((await cnxRes.value.json().catch(() => [])) as Connection[]) ?? []);
       }
     })();
     return () => {
@@ -201,6 +209,13 @@ function NovaCampanha() {
       alive = false;
     };
   }, [editId]);
+
+  // Só número conectado pode receber campanha: oferecer um desconectado seria agendar
+  // para um envio que falha na hora.
+  const conectadas = useMemo(
+    () => conexoes.filter((c) => c.ativo && c.status === 'conectada'),
+    [conexoes],
+  );
 
   const activeGroups = useMemo(() => groups.filter((g) => g.ativo), [groups]);
   const activeCount = activeGroups.length || GROUP_COUNT_HINT;
@@ -341,7 +356,7 @@ function NovaCampanha() {
       const res = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draft, asDraft, audience_id, group_ids }),
+        body: JSON.stringify({ draft, asDraft, audience_id, group_ids, connection_id: conexaoId }),
       });
       if (res.ok) {
         router.push('/campanhas');
@@ -517,6 +532,35 @@ function NovaCampanha() {
               ))}
             </div>
           </Field>
+
+          {/* Só aparece quando existe conexão conectada. Enquanto o motor novo estiver
+              em teste, o padrão continua sendo o de sempre — escolher é opt-in. */}
+          {conectadas.length > 0 && (
+            <Field
+              label="Enviar por"
+              hint="· em teste — o padrão continua sendo o motor atual"
+            >
+              <div className="flex flex-wrap gap-2">
+                <SegButton on={conexaoId === null} onClick={() => setConexaoId(null)}>
+                  n8n + Z-API
+                </SegButton>
+                {conectadas.map((c) => (
+                  <SegButton
+                    key={c.id}
+                    on={conexaoId === c.id}
+                    onClick={() => setConexaoId(c.id)}
+                  >
+                    {c.nome}
+                  </SegButton>
+                ))}
+              </div>
+              {conexaoId && (
+                <p className="mt-2 text-xs text-[#b9c6e6]">
+                  Esta campanha sai pelo motor novo (Evolution). O n8n não vai vê-la.
+                </p>
+              )}
+            </Field>
+          )}
 
           <Field label="Tipo de conteúdo">
             <div className="flex flex-wrap gap-2">

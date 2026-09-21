@@ -59,7 +59,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.supabaseUrl }}/rest/v1/campaigns?select=*,audiences(*)&status=eq.agendada&enviar_em=lte.{{ $now.toUTC().toISO().replace('+00:00','Z') }}",
+        "url": "={{ $json.supabaseUrl }}/rest/v1/campaigns?select=*,audiences(*)&connection_id=is.null&status=eq.agendada&enviar_em=lte.{{ $now.toUTC().toISO().replace('+00:00','Z') }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -88,7 +88,8 @@
       "position": [
         -720,
         320
-      ]
+      ],
+      "notes": "connection_id=is.null é obrigatório: campanha COM conexão pertence ao motor novo (Evolution). Sem esse filtro, ela sairia pelo n8n E pelo motor — o grupo receberia a mesma mensagem duas vezes."
     },
     {
       "parameters": {

@@ -53,6 +53,12 @@ export async function promoverCampanhas(
     .from('campaigns')
     .select('*')
     .eq('status', 'agendada')
+    // ⚠️ A REGRA QUE PERMITE OS DOIS MOTORES CONVIVEREM: só entra aqui a campanha que
+    // escolheu um número na tela. Campanha sem conexão é do n8n + Z-API — inclusive
+    // todas as que já estavam agendadas antes desta migração, e tudo que as sequências
+    // e recorrências criarem. Sem este filtro, ligar o motor novo sequestraria o
+    // Academy e o P360 no primeiro minuto.
+    .not('connection_id', 'is', null)
     .lte('enviar_em', agora.toISOString())
     .order('enviar_em', { ascending: true })
     .limit(50);
@@ -62,16 +68,9 @@ export async function promoverCampanhas(
   }
   if (!vencidas?.length) return 0;
 
-  // Conexão de reserva: a primeira conectada, em ordem de cadastro. Só é usada quando
-  // nem o grupo nem a campanha apontam uma.
-  const { data: conexoes } = await supabase
-    .from('connections')
-    .select('id')
-    .eq('ativo', true)
-    .eq('status', 'conectada')
-    .order('criado_em', { ascending: true })
-    .limit(1);
-  const conexaoPadrao = (conexoes?.[0]?.id as string | undefined) ?? null;
+  // Sem conexão de reserva de propósito: como só chega aqui campanha que JÁ escolheu
+  // um número, qualquer escolha implícita do motor seria um envio que ninguém pediu.
+  const conexaoPadrao: string | null = null;
 
   let promovidas = 0;
   for (const bruta of vencidas as Campaign[]) {
