@@ -149,7 +149,12 @@ function NovaCampanha() {
         setGroups(((await grpRes.value.json().catch(() => [])) as Group[]) ?? []);
       }
       if (cnxRes.status === 'fulfilled' && cnxRes.value.ok) {
-        setConexoes(((await cnxRes.value.json().catch(() => [])) as Connection[]) ?? []);
+        // /api/connections responde { conexoes, configurada } — não uma lista pura como
+        // /api/audiences e /api/groups. O Array.isArray cobre as duas formas e qualquer
+        // resposta inesperada: aqui uma lista errada derrubava o compositor inteiro.
+        const body = await cnxRes.value.json().catch(() => null);
+        const lista = Array.isArray(body) ? body : body?.conexoes;
+        setConexoes(Array.isArray(lista) ? (lista as Connection[]) : []);
       }
     })();
     return () => {
@@ -213,7 +218,7 @@ function NovaCampanha() {
   // Só número conectado pode receber campanha: oferecer um desconectado seria agendar
   // para um envio que falha na hora.
   const conectadas = useMemo(
-    () => conexoes.filter((c) => c.ativo && c.status === 'conectada'),
+    () => (Array.isArray(conexoes) ? conexoes.filter((c) => c.ativo && c.status === 'conectada') : []),
     [conexoes],
   );
 
