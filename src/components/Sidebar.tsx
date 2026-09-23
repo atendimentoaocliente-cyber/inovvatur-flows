@@ -8,6 +8,7 @@ const items = [
   { href: '/campanhas', label: 'Campanhas', icon: '📣' },
   { href: '/sequencias', label: 'Sequências', icon: '🔁' },
   { href: '/recorrencias', label: 'Recorrentes', icon: '🔄' },
+  { href: '/celular', label: 'Celular', icon: '💬' },
   { href: '/conexoes', label: 'Conexões', icon: '📱' },
   { href: '/grupos', label: 'Grupos', icon: '👥' },
   { href: '/publicos', label: 'Públicos', icon: '⭐' },
