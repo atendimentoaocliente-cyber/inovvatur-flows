@@ -133,3 +133,29 @@ describe('podeEditar', () => {
     expect(podeEditar({ ...base, fromMe: false }, 1001)).toBe(false);
   });
 });
+
+describe('nome de grupo na Evolution 2.3.7', () => {
+  it('usa o pushName quando o chat de grupo não traz name nem subject', () => {
+    // O findChats da 2.3.7 devolve o nome do grupo em pushName. Antes disso, todos os
+    // grupos apareciam como "Grupo" na tela.
+    const c = paraConversa(
+      { remoteJid: '120363419391061458@g.us', pushName: 'Networking Inovvatur' },
+      new Map(),
+    );
+    expect(c?.nome).toBe('Networking Inovvatur');
+    expect(c?.grupo).toBe(true);
+  });
+
+  it('o nome cadastrado aqui ganha do que vem da Evolution', () => {
+    const c = paraConversa(
+      { remoteJid: '120@g.us', pushName: 'Nome da Evolution' },
+      new Map([['120@g.us', 'Nome que cadastramos']]),
+    );
+    expect(c?.nome).toBe('Nome que cadastramos');
+  });
+
+  it('sem nenhum nome, continua caindo no genérico', () => {
+    const c = paraConversa({ remoteJid: '999@g.us' }, new Map());
+    expect(c?.nome).toBe('Grupo');
+  });
+});

@@ -197,10 +197,18 @@ export function paraConversa(registro: unknown, nomesDeGrupo: Map<string, string
     };
   }
 
-  // Em grupo, o pushName do chat é de quem mandou a última mensagem, não o nome do grupo.
+  // Nome do grupo, em ordem de confiança:
+  //   1. o que está cadastrado aqui (veio do /group/fetchAllGroups, é o `subject` real);
+  //   2. name/subject do próprio chat;
+  //   3. pushName — na Evolution 2.3.7 o findChats devolve o nome do GRUPO aqui
+  //      (conferido na instância: "Networking Inovvatur", "Programa 360 Inovvatur").
+  //      Em versões onde isso for o nome de quem mandou a última mensagem, ainda é
+  //      melhor que o genérico "Grupo", e some assim que os grupos forem sincronizados.
   const nome =
     (grupo ? nomesDeGrupo.get(jid) : null) ??
-    (grupo ? str(r.name) ?? str(r.subject) : str(r.pushName) ?? str(r.name)) ??
+    (grupo
+      ? str(r.name) ?? str(r.subject) ?? str(r.pushName)
+      : str(r.pushName) ?? str(r.name)) ??
     (telefone ? `+${telefone}` : grupo ? 'Grupo' : jid.split('@')[0]);
 
   return {
