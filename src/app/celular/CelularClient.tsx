@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { Connection } from '@/lib/types';
 import { podeEditar, type Balao, type Conversa, type Tique } from '@/lib/whatsapp/conversas';
 import { formatWhen } from '@/lib/format';
+import { uploadMedia } from '@/lib/upload-client';
 
 // Paleta do WhatsApp Web no modo escuro — de propósito diferente do resto do painel:
 // a tela tem que ser reconhecida na hora como "o celular".
@@ -388,6 +389,12 @@ function ConversaAberta({
   const [editando, setEditando] = useState<{ tipo: 'enviada' | 'fila'; id: string; texto: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [agoraSeg, setAgoraSeg] = useState(() => Math.floor(Date.now() / 1000));
+  // Barra de composição: mensagem avulsa, fora da fila de campanhas.
+  const [rascunho, setRascunho] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [anexo, setAnexo] = useState<{ url: string; nome: string; tipo: 'imagem' | 'video' | 'pdf' } | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const arquivoRef = useRef<HTMLInputElement>(null);
   const fundoRef = useRef<HTMLDivElement>(null);
   const colarNoFim = useRef(true);
 
@@ -480,6 +487,48 @@ function ConversaAberta({
         : 'Texto da mensagem agendada atualizado.',
     );
     setEditando(null);
+    void carregar();
+  }
+
+  async function anexar(file: File) {
+    setSubindo(true);
+    setAviso(null);
+    const out = await uploadMedia(file);
+    setSubindo(false);
+    if (arquivoRef.current) arquivoRef.current.value = '';
+    if (!('url' in out)) {
+      setAviso(out.error);
+      return;
+    }
+    const t = file.type.startsWith('image/') ? 'imagem' : file.type.startsWith('video/') ? 'video' : 'pdf';
+    setAnexo({ url: out.url, nome: file.name, tipo: t });
+  }
+
+  async function enviar() {
+    const texto = rascunho.trim();
+    if (!texto && !anexo) return;
+    setEnviando(true);
+    setAviso(null);
+    const r = await fetch('/api/celular/enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conexao: conexaoId || null,
+        jid: conversa.jid,
+        texto,
+        tipo: anexo?.tipo ?? 'texto',
+        midia_url: anexo?.url ?? null,
+      }),
+    }).catch(() => null);
+    const b = await r?.json().catch(() => ({}));
+    setEnviando(false);
+    if (!r?.ok) {
+      setAviso(b?.error ?? 'Não foi possível enviar.');
+      return;
+    }
+    setRascunho('');
+    setAnexo(null);
+    colarNoFim.current = true;
     void carregar();
   }
 
@@ -748,6 +797,74 @@ function ConversaAberta({
             })}
           </div>
         )}
+      </div>
+
+      {/* BARRA DE COMPOSIÇÃO — mensagem avulsa, fora da fila de campanhas. */}
+      <div className="px-3 py-2.5" style={{ background: WA.barra }}>
+        {anexo && (
+          <div
+            className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px]"
+            style={{ background: WA.entrada, color: WA.texto }}
+          >
+            <span aria-hidden="true">
+              {anexo.tipo === 'imagem' ? '🖼️' : anexo.tipo === 'video' ? '🎬' : '📄'}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{anexo.nome}</span>
+            <button type="button" onClick={() => setAnexo(null)} aria-label="Remover anexo" style={{ color: WA.cinza }}>
+              ×
+            </button>
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <input
+            ref={arquivoRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void anexar(f);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => arquivoRef.current?.click()}
+            disabled={subindo || enviando}
+            aria-label="Anexar arquivo"
+            className="shrink-0 rounded-full px-2.5 py-2 text-lg disabled:opacity-40"
+            style={{ color: WA.cinza }}
+          >
+            {subindo ? '…' : '📎'}
+          </button>
+          <textarea
+            value={rascunho}
+            onChange={(e) => setRascunho(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter envia, Shift+Enter quebra linha — como no WhatsApp.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!enviando && !subindo) void enviar();
+              }
+            }}
+            rows={1}
+            placeholder={`Mensagem para ${conversa.nome}`}
+            className="max-h-32 min-h-[42px] flex-1 resize-y rounded-lg px-3.5 py-2.5 text-[15px] outline-none"
+            style={{ background: WA.entrada, color: WA.texto }}
+          />
+          <button
+            type="button"
+            onClick={() => void enviar()}
+            disabled={enviando || subindo || (!rascunho.trim() && !anexo)}
+            aria-label="Enviar mensagem"
+            className="shrink-0 rounded-full px-3.5 py-2.5 text-lg font-semibold disabled:opacity-40"
+            style={{ background: WA.verde, color: '#0b141a' }}
+          >
+            {enviando ? '…' : '➤'}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[11.5px]" style={{ color: WA.cinza }}>
+          Sai agora pelo número desta conversa — mensagem avulsa, não entra na fila de campanhas.
+        </p>
       </div>
 
       {aviso && (
