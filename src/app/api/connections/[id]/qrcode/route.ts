@@ -7,7 +7,7 @@ import {
   estadoInstancia,
   EvolutionError,
 } from '@/lib/whatsapp/evolution';
-import { urlDoWebhook } from '@/lib/whatsapp/conexao';
+import { urlDoWebhook, webhookAlcancavel } from '@/lib/whatsapp/conexao';
 import type { Connection } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Best-effort: um erro aqui não deve impedir a pessoa de ver o QR.
-    await definirWebhook(conexao.instance_name, urlDoWebhook()).catch(() => {});
+    // Só reaponta quando a URL é alcançável de fora: rodando em localhost, reescrever
+    // aqui apagaria o webhook de produção e mataria os eventos em silêncio.
+    if (webhookAlcancavel()) {
+      await definirWebhook(conexao.instance_name, urlDoWebhook()).catch(() => {});
+    }
 
     const qrcode = await conectarInstancia(conexao.instance_name);
     await supabase

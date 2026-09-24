@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { readJson } from '@/lib/http';
 import { criarInstancia, EvolutionError, evolutionConfigurada } from '@/lib/whatsapp/evolution';
-import { nomeDeInstancia, urlDoWebhook } from '@/lib/whatsapp/conexao';
+import { nomeDeInstancia, urlDoWebhook, webhookAlcancavel } from '@/lib/whatsapp/conexao';
 import type { Connection } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -47,7 +47,9 @@ export async function POST(req: Request) {
   }
 
   const instanceName = nomeDeInstancia(nome);
-  const webhookUrl = urlDoWebhook();
+  // Em localhost não registramos webhook: a Evolution está noutra máquina e não
+  // alcançaria — a conexão nasceria sem eventos, sem nada avisar.
+  const webhookUrl = webhookAlcancavel() ? urlDoWebhook() : undefined;
 
   let qrcode;
   try {
