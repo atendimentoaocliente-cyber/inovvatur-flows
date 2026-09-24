@@ -33,10 +33,15 @@ export async function GET(req: Request) {
   }
 
   // A Evolution devolve da mais nova para a mais antiga; o chat lê de cima para baixo.
-  const baloes = lote.registros
-    .map(paraBalao)
-    .filter((b): b is Balao => b !== null)
-    .sort((a, b) => a.ts - b.ts);
+  // O `Map` por id não é zelo: a Evolution grava a MESMA mensagem duas vezes com
+  // frequência (conferido numa conversa real: 9 dos 19 registros eram repetição, com
+  // id idêntico). Sem isto, o mesmo balão chega duplicado na tela.
+  const unicos = new Map<string, Balao>();
+  for (const bruto of lote.registros) {
+    const b = paraBalao(bruto);
+    if (b) unicos.set(b.id, b);
+  }
+  const baloes = [...unicos.values()].sort((a, b) => a.ts - b.ts);
 
   // 1 e 2: de qual campanha saiu cada balão nosso.
   const nossos = baloes.filter((b) => b.fromMe).map((b) => b.id);
