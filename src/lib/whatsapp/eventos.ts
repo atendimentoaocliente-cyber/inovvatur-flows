@@ -138,3 +138,69 @@ export function parseEventoEvolution(payload: unknown): EventoWhatsApp {
 
   return { tipo: 'ignorado', motivo: `evento não tratado: ${evento || '(vazio)'}` };
 }
+
+/** Uma mensagem de conversa pronta para guardar. */
+export interface MensagemParaGuardar {
+  jid: string;
+  messageId: string;
+  fromMe: boolean;
+  tipo: string;
+  texto: string | null;
+  autor: string | null;
+  autorNome: string | null;
+  /** Segundos desde 1970, como o WhatsApp entrega. */
+  ts: number;
+}
+
+/** Tipo do balão a partir da chave que o WhatsApp usa no objeto `message`. */
+function tipoDaMensagem(message: Record<string, unknown>): string {
+  if (message.conversation || message.extendedTextMessage) return 'texto';
+  if (message.imageMessage) return 'imagem';
+  if (message.videoMessage) return 'video';
+  if (message.audioMessage || message.pttMessage) return 'audio';
+  if (message.documentMessage || message.documentWithCaptionMessage) return 'documento';
+  if (message.stickerMessage) return 'figurinha';
+  if (message.pollCreationMessage || message.pollCreationMessageV3) return 'enquete';
+  if (message.contactMessage || message.contactsArrayMessage) return 'contato';
+  if (message.locationMessage) return 'localizacao';
+  return 'outro';
+}
+
+/**
+ * Extrai de um webhook `messages.upsert` a mensagem a ser guardada — INCLUSIVE a nossa.
+ *
+ * É de propósito que isto não reaproveite `parseEventoEvolution`: lá, a própria
+ * mensagem é descartada porque não pode contar como "resposta" no KPI. Aqui ela tem
+ * que entrar, senão o que sai do painel não aparece na conversa.
+ *
+ * Devolve null quando o payload não é uma mensagem aproveitável — nunca lança, porque
+ * derrubar o webhook faz a Evolution reenviar em loop.
+ */
+export function mensagemDoUpsert(payload: unknown): MensagemParaGuardar | null {
+  const p = obj(payload);
+  const evento = String(p.event ?? p.type ?? '').toLowerCase().replace(/_/g, '.');
+  if (evento !== 'messages.upsert' && evento !== 'message.upsert') return null;
+
+  const data = obj(p.data);
+  const key = obj(data.key);
+  const jid = texto(data.remoteJid) ?? texto(key.remoteJid);
+  const messageId = texto(key.id) ?? texto(data.keyId) ?? texto(data.messageId);
+  if (!jid || !messageId) return null;
+
+  const message = obj(data.message);
+  const ts = Number(data.messageTimestamp ?? data.timestamp ?? 0);
+
+  return {
+    jid,
+    messageId,
+    fromMe: key.fromMe === true || data.fromMe === true,
+    tipo: tipoDaMensagem(message),
+    texto: extrairTexto(message),
+    // Em grupo o `participant` diz quem falou; em conversa individual não vem.
+    autor: texto(key.participant) ?? texto(data.participant),
+    autorNome: texto(data.pushName),
+    // Sem carimbo do WhatsApp, usamos a chegada: melhor um instante aproximado do que
+    // uma mensagem sem lugar na linha do tempo.
+    ts: Number.isFinite(ts) && ts > 0 ? Math.floor(ts) : Math.floor(Date.now() / 1000),
+  };
+}

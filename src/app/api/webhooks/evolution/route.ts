@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { parseEventoEvolution, type AckStatus } from '@/lib/whatsapp/eventos';
+import { mensagemDoUpsert, parseEventoEvolution, type AckStatus } from '@/lib/whatsapp/eventos';
 import { normalizarDestino } from '@/lib/whatsapp/jid';
 import { assinaturaConfere } from '@/lib/seguranca';
 
@@ -60,6 +60,40 @@ export async function POST(req: Request) {
 
   const evento = parseEventoEvolution(payload);
   const instancia = String((payload as Record<string, unknown>)?.instance ?? '').trim();
+
+  // Guarda a mensagem da conversa (inclusive a nossa). É o que dá tempo real à tela de
+  // Celular: o banco da Evolution grava em lotes e chega a ficar 40 minutos atrás do
+  // que está acontecendo; o webhook chega no instante. Roda antes do resto e nunca
+  // atrapalha — erro aqui é engolido, como tudo neste endpoint.
+  const msg = mensagemDoUpsert(payload);
+  if (msg && instancia) {
+    try {
+      const supabase = createServerClient();
+      const { data: cx } = await supabase
+        .from('connections')
+        .select('id')
+        .eq('instance_name', instancia)
+        .maybeSingle();
+      if (cx?.id) {
+        await supabase.from('mensagens').upsert(
+          {
+            connection_id: cx.id as string,
+            jid: msg.jid,
+            message_id: msg.messageId,
+            from_me: msg.fromMe,
+            tipo: msg.tipo,
+            texto: msg.texto,
+            autor: msg.autor,
+            autor_nome: msg.autorNome,
+            enviada_em: new Date(msg.ts * 1000).toISOString(),
+          },
+          { onConflict: 'connection_id,message_id', ignoreDuplicates: true },
+        );
+      }
+    } catch {
+      // Um KPI defasado é melhor que o webhook parar.
+    }
+  }
 
   try {
     const supabase = createServerClient();

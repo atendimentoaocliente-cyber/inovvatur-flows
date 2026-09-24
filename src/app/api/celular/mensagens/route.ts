@@ -41,6 +41,38 @@ export async function GET(req: Request) {
     const b = paraBalao(bruto);
     if (b) unicos.set(b.id, b);
   }
+  // Só a primeira página junta o que o webhook guardou: ela é "o agora", e é onde a
+  // Evolution falha — o banco dela grava em lotes e fica minutos (às vezes dezenas)
+  // atrás do que está acontecendo. Páginas seguintes são passado, e aí a Evolution é a
+  // fonte boa, porque tem histórico anterior à existência da conexão aqui.
+  if (pagina === 1) {
+    const { data: nossas } = await supabase
+      .from('mensagens')
+      .select('message_id,from_me,tipo,texto,autor,autor_nome,enviada_em')
+      .eq('connection_id', conexao.id)
+      .eq('jid', jid)
+      .order('enviada_em', { ascending: false })
+      .limit(60);
+
+    for (const m of (nossas ?? []) as Record<string, string | boolean | null>[]) {
+      const id = String(m.message_id);
+      // A Evolution ganha quando tem a mesma mensagem: o registro dela é mais completo
+      // (mídia, tique, edição). O nosso é a rede de segurança para o que ainda não chegou lá.
+      if (unicos.has(id)) continue;
+      unicos.set(id, {
+        id,
+        fromMe: m.from_me === true,
+        tipo: (m.tipo as Balao['tipo']) ?? 'texto',
+        texto: (m.texto as string | null) ?? null,
+        arquivo: null,
+        autor: (m.autor_nome as string | null) ?? (m.autor as string | null),
+        ts: Math.floor(new Date(String(m.enviada_em)).getTime() / 1000),
+        tique: m.from_me === true ? 'enviado' : null,
+        editada: false,
+      });
+    }
+  }
+
   const baloes = [...unicos.values()].sort((a, b) => a.ts - b.ts);
 
   // 1 e 2: de qual campanha saiu cada balão nosso.

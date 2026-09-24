@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lerAck, parseEventoEvolution } from './eventos';
+import { lerAck, parseEventoEvolution , mensagemDoUpsert } from './eventos';
 
 /**
  * Este arquivo é o teste mais importante do projeto para os KPIs.
@@ -181,5 +181,63 @@ describe('parseEventoEvolution — robustez', () => {
     expect(() => parseEventoEvolution('texto solto')).not.toThrow();
     expect(() => parseEventoEvolution({ event: 'chats.upsert', data: [] })).not.toThrow();
     expect(parseEventoEvolution({}).tipo).toBe('ignorado');
+  });
+});
+
+describe('mensagemDoUpsert — o que vai para o nosso banco', () => {
+  const upsert = (data: Record<string, unknown>) => ({ event: 'messages.upsert', data });
+
+  it('guarda a mensagem que NÓS mandamos — é a metade que sumia da conversa', () => {
+    const m = mensagemDoUpsert(
+      upsert({
+        key: { remoteJid: '120@g.us', id: 'ABC', fromMe: true },
+        message: { conversation: 'oi pessoal' },
+        messageTimestamp: 1790000000,
+      }),
+    );
+    expect(m).toEqual({
+      jid: '120@g.us',
+      messageId: 'ABC',
+      fromMe: true,
+      tipo: 'texto',
+      texto: 'oi pessoal',
+      autor: null,
+      autorNome: null,
+      ts: 1790000000,
+    });
+  });
+
+  it('em grupo, registra quem falou', () => {
+    const m = mensagemDoUpsert(
+      upsert({
+        key: { remoteJid: '120@g.us', id: 'D', fromMe: false, participant: '5511999@s.whatsapp.net' },
+        message: { conversation: 'bom dia' },
+        pushName: 'Maria',
+        messageTimestamp: 1790000100,
+      }),
+    );
+    expect(m).toMatchObject({ autor: '5511999@s.whatsapp.net', autorNome: 'Maria', fromMe: false });
+  });
+
+  it('classifica o tipo pela chave do WhatsApp', () => {
+    const tipoDe = (message: Record<string, unknown>) =>
+      mensagemDoUpsert(upsert({ key: { remoteJid: '1@g.us', id: 'x' }, message, messageTimestamp: 1 }))?.tipo;
+    expect(tipoDe({ imageMessage: {} })).toBe('imagem');
+    expect(tipoDe({ videoMessage: {} })).toBe('video');
+    expect(tipoDe({ audioMessage: {} })).toBe('audio');
+    expect(tipoDe({ documentMessage: {} })).toBe('documento');
+    expect(tipoDe({ conversation: 'oi' })).toBe('texto');
+    expect(tipoDe({ coisaNova: {} })).toBe('outro');
+  });
+
+  it('sem carimbo de tempo, usa a chegada em vez de descartar', () => {
+    const m = mensagemDoUpsert(upsert({ key: { remoteJid: '1@g.us', id: 'y' }, message: { conversation: 'x' } }));
+    expect(m?.ts).toBeGreaterThan(1700000000);
+  });
+
+  it('ignora o que não é mensagem', () => {
+    expect(mensagemDoUpsert({ event: 'connection.update', data: { state: 'open' } })).toBeNull();
+    expect(mensagemDoUpsert(upsert({ key: {} }))).toBeNull();
+    expect(mensagemDoUpsert(null)).toBeNull();
   });
 });
