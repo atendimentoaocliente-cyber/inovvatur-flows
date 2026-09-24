@@ -526,10 +526,29 @@ function ConversaAberta({
       setAviso(b?.error ?? 'Não foi possível enviar.');
       return;
     }
+    // A Evolution não devolve a mensagem recém-enviada no findMessages (conferido:
+    // envio 200 com messageId, e a conversa continua sem ela). Então o balão entra
+    // aqui mesmo, como todo chat faz. `carregar` junta por id em vez de substituir,
+    // então ele sobrevive às recargas — e se a Evolution passar a guardar, o mesmo id
+    // é sobrescrito e não duplica.
+    const enviado: Balao = {
+      id: b?.messageId ?? `local-${Date.now()}`,
+      fromMe: true,
+      tipo: anexo ? (anexo.tipo === 'pdf' ? 'documento' : anexo.tipo) : 'texto',
+      texto: texto || null,
+      arquivo: anexo?.nome ?? null,
+      autor: null,
+      ts: Math.floor(Date.now() / 1000),
+      tique: 'enviado',
+      editada: false,
+    };
+    // A prévia da mídia não entra no balão otimista: `origem` é o selo de campanha, e
+    // forjar uma entrada ali criaria um link para uma campanha inexistente. O balão
+    // aparece com o nome do arquivo, e a imagem carrega quando a Evolution a tiver.
+    setBaloes((atual) => [...(atual ?? []), enviado].sort((x, z) => x.ts - z.ts));
     setRascunho('');
     setAnexo(null);
     colarNoFim.current = true;
-    void carregar();
   }
 
   async function apagar(id: string) {
