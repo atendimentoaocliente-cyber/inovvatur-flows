@@ -58,6 +58,33 @@ export async function POST(req: Request) {
       // inteiro sem querer é fácil e não tem desfazer. Campanha tem esse controle.
       mencionarTodos: false,
     });
+    // Grava já, sem esperar o eco do webhook. Sabemos desta mensagem melhor do que
+    // ninguém: deixar a nossa própria mensagem depender de um evento externo chegar é
+    // o que fazia ela sumir da conversa. O índice único por (conexão, message_id) faz
+    // o eco, quando chegar, ser descartado em vez de duplicar.
+    if (r.messageId) {
+      await supabase
+        .from('mensagens')
+        .upsert(
+          {
+            connection_id: aberta.conexao.id,
+            jid,
+            message_id: r.messageId,
+            from_me: true,
+            tipo: tipo === 'pdf' ? 'documento' : tipo,
+            texto: texto || null,
+            autor: null,
+            autor_nome: null,
+            enviada_em: new Date().toISOString(),
+          },
+          { onConflict: 'connection_id,message_id', ignoreDuplicates: true },
+        )
+        .then(
+          () => {},
+          () => {}, // gravar é melhor-esforço: a mensagem já saiu, não dá para desfazer
+        );
+    }
+
     return NextResponse.json({ ok: true, messageId: r.messageId });
   } catch (e) {
     // O destino no log é o que permite descobrir por que a Evolution recusou —
