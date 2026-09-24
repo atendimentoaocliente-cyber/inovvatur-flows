@@ -60,6 +60,16 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, messageId: r.messageId });
   } catch (e) {
+    // O destino no log é o que permite descobrir por que a Evolution recusou —
+    // sem isso sobra só o status. Texto não entra, só o tamanho.
+    console.error('[celular/enviar] falhou', {
+      instancia: aberta.conexao.instance_name,
+      destino: jid,
+      tipo,
+      temMidia: Boolean(midia_url),
+      tamanhoTexto: texto.length,
+      erro: e instanceof Error ? e.message : String(e),
+    });
     return respostaDeErro(e);
   }
 }

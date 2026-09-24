@@ -95,6 +95,16 @@ async function chamar<T = unknown>(
   return corpo as T;
 }
 
+/**
+ * A Evolution às vezes devolve literalmente a string "[object Object]" dentro da lista
+ * de mensagens — ela mesma estraga o próprio erro. Repassar isso para a tela é pior que
+ * não dizer nada, então trocamos por algo acionável.
+ */
+function inutil(txt: string): boolean {
+  const t = txt.trim().toLowerCase();
+  return !t || t === '[object object]' || t === 'undefined' || t === 'null';
+}
+
 /** Cava a mensagem de erro da Evolution, que vem em um de vários formatos. */
 function mensagemDeErro(corpo: unknown, status: number): string {
   if (typeof corpo === 'string' && corpo.trim()) return `${status}: ${corpo.slice(0, 300)}`;
@@ -103,9 +113,18 @@ function mensagemDeErro(corpo: unknown, status: number): string {
     const resposta = c.response as Record<string, unknown> | undefined;
     const bruto =
       (resposta?.message as unknown) ?? c.message ?? c.error ?? c.errors ?? c.detail;
-    if (Array.isArray(bruto)) return `${status}: ${bruto.map(String).join('; ').slice(0, 300)}`;
-    if (typeof bruto === 'string' && bruto.trim()) return `${status}: ${bruto.slice(0, 300)}`;
-    if (bruto) return `${status}: ${JSON.stringify(bruto).slice(0, 300)}`;
+    if (Array.isArray(bruto)) {
+      // Objeto dentro da lista vira JSON, não "[object Object]".
+      const partes = bruto
+        .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+        .filter((x) => !inutil(String(x)));
+      if (partes.length) return `${status}: ${partes.join('; ').slice(0, 300)}`;
+    }
+    if (typeof bruto === 'string' && !inutil(bruto)) return `${status}: ${bruto.slice(0, 300)}`;
+    if (bruto && !Array.isArray(bruto)) return `${status}: ${JSON.stringify(bruto).slice(0, 300)}`;
+  }
+  if (status === 400) {
+    return 'A Evolution recusou o envio (400) sem dizer o motivo. Normalmente é o destino: o número não participa mais do grupo, ou o ID da conversa está desatualizado. Tente sincronizar os grupos em Conexões.';
   }
   return `A Evolution respondeu ${status} sem detalhar o motivo.`;
 }

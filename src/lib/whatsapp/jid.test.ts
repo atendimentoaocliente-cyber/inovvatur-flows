@@ -88,3 +88,24 @@ describe('somenteDigitos', () => {
     expect(somenteDigitos('+55 (11) 9.9999-8888')).toBe('5511999998888');
   });
 });
+
+describe('identificadores opacos (não são telefone)', () => {
+  it('preserva @lid — arrancar o sufixo fazia a Evolution responder exists:false', () => {
+    // Caso real: 6 das 26 conversas do número usam @lid. Mandar "113950297477249"
+    // como telefone devolvia 400 {"exists":false}.
+    expect(normalizarDestino('113950297477249@lid')).toBe('113950297477249@lid');
+  });
+
+  it('preserva canal e transmissão', () => {
+    expect(normalizarDestino('12345@newsletter')).toBe('12345@newsletter');
+    expect(normalizarDestino('status@broadcast')).toBe('status@broadcast');
+  });
+
+  it('continua reduzindo o JID de contato comum a dígitos', () => {
+    expect(normalizarDestino('5511999998888@s.whatsapp.net')).toBe('5511999998888');
+  });
+
+  it('e não confunde @lid com grupo', () => {
+    expect(ehGrupo('113950297477249@lid')).toBe(false);
+  });
+})

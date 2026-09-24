@@ -35,8 +35,19 @@ export function normalizarDestino(destino: string): string {
     return id ? `${id}${SUFIXO_GRUPO}` : '';
   }
 
-  const semSufixo = d.replace(SUFIXO_CONTATO, '');
-  return somenteDigitos(semSufixo);
+  // Qualquer outro JID com sufixo conhecido é um identificador OPACO, não um telefone:
+  //   • @lid        — identidade que o WhatsApp usa para esconder o número real
+  //   • @newsletter — canais
+  //   • @broadcast  — listas de transmissão e status
+  // Arrancar o sufixo e mandar os dígitos faz a Evolution procurar um telefone que não
+  // existe ("exists: false"). Estes vão como vieram.
+  const at = d.lastIndexOf('@');
+  if (at > 0) {
+    const sufixo = d.slice(at);
+    if (sufixo !== SUFIXO_CONTATO) return d;
+    return somenteDigitos(d.slice(0, at));
+  }
+  return somenteDigitos(d);
 }
 
 /** Tira tudo que não é dígito. `+55 (11) 99999-9999` → `5511999999999`. */
