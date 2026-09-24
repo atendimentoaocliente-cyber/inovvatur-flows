@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCampaignRow } from './campaign-row';
+import { buildCampaignRow , descreverPublico } from './campaign-row';
 import type { CampaignDraft } from './validation';
 
 const now = new Date('2026-08-20T12:00:00Z');
@@ -46,5 +46,48 @@ describe('buildCampaignRow', () => {
   });
   it('carries a valid categoria', () => {
     expect(buildCampaignRow({ ...draft, categoria: 'p360' }, null, null, now, { asDraft: false }).categoria).toBe('p360');
+  });
+});
+
+describe('descreverPublico — a coluna que mentia', () => {
+  const aud = [
+    { id: 'a1', nome: 'Avisos aulas', tipo: 'manual', group_ids: ['g1', 'g2', 'g3'] },
+    { id: 'a2', nome: 'Todo mundo', tipo: 'todos', group_ids: null },
+  ];
+
+  it('mostra o nome do público salvo e quantos grupos ele tem', () => {
+    // O caso real: 6 campanhas com "Avisos aulas" (3 grupos) apareciam como
+    // "Todos · grupos ativos" — cinco vezes o alcance verdadeiro.
+    expect(descreverPublico({ audience_id: 'a1', group_ids: null }, aud, 15)).toEqual({
+      titulo: 'Avisos aulas',
+      detalhe: '3 grupos',
+    });
+  });
+
+  it('público do tipo "todos" conta os ativos', () => {
+    expect(descreverPublico({ audience_id: 'a2', group_ids: null }, aud, 15)).toEqual({
+      titulo: 'Todo mundo',
+      detalhe: '15 grupos',
+    });
+  });
+
+  it('grupos escolhidos na campanha ganham do público', () => {
+    expect(descreverPublico({ audience_id: 'a1', group_ids: ['x', 'y'] }, aud, 15)).toEqual({
+      titulo: '2 grupos',
+      detalhe: 'escolhidos na campanha',
+    });
+  });
+
+  it('sem nada escolhido, avisa que vai para todos — com o número', () => {
+    expect(descreverPublico({ audience_id: null, group_ids: null }, aud, 15)).toEqual({
+      titulo: 'Todos',
+      detalhe: '15 grupos ativos',
+    });
+  });
+
+  it('público apagado não vira nome vazio', () => {
+    const r = descreverPublico({ audience_id: 'sumiu', group_ids: null }, aud, 15);
+    expect(r.titulo).toBe('Público removido');
+    expect(r.detalhe).toMatch(/15/);
   });
 });

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Campaign, CampaignStatus } from '@/lib/types';
+import type { Audience, Campaign, CampaignStatus } from '@/lib/types';
 import { CampaignRow, type ActionResult } from '@/components/CampaignRow';
 import { formatWhen } from '@/lib/format';
 import { CATEGORIAS, type CategoriaKey } from '@/lib/categories';
@@ -28,7 +28,15 @@ const emptyMessage: Record<Tab, string> = {
   rascunhos: 'Sem rascunhos salvos.',
 };
 
-export function CampaignsClient({ initial }: { initial: Campaign[] }) {
+export function CampaignsClient({
+  initial,
+  audiences = [],
+  gruposAtivos = 0,
+}: {
+  initial: Campaign[];
+  audiences?: Audience[];
+  gruposAtivos?: number;
+}) {
   const [cat, setCat] = useState<CatTab>('todas');
   const [tab, setTab] = useState<Tab>('agendadas');
   // Own the list so row actions can mutate it in place (update/remove) without a full reload.
@@ -210,6 +218,8 @@ export function CampaignsClient({ initial }: { initial: Campaign[] }) {
               <CampaignRow
                 key={c.id}
                 c={c}
+                audiences={audiences}
+                gruposAtivos={gruposAtivos}
                 onDelete={handleDelete}
                 onCancel={(id) => handleSetStatus(id, 'cancelada')}
                 onReenviar={(id) => handleSetStatus(id, 'agendada')}

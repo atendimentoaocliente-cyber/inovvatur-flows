@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { Campaign, CampaignStatus, CampaignType } from '@/lib/types';
+import type { Audience, Campaign, CampaignStatus, CampaignType } from '@/lib/types';
 import { campaignActions, type CampaignAction } from '@/lib/campaign-actions';
+import { descreverPublico } from '@/lib/campaign-row';
 import { StatusChip } from './StatusChip';
 import { formatWhen } from '@/lib/format';
 import { categoriaLabel } from '@/lib/categories';
@@ -43,15 +44,21 @@ export type ActionResult = { ok: boolean; error?: string };
 
 export function CampaignRow({
   c,
+  audiences = [],
+  gruposAtivos = 0,
   onDelete,
   onCancel,
   onReenviar,
 }: {
   c: Campaign;
+  audiences?: Audience[];
+  gruposAtivos?: number;
   onDelete: (id: string) => Promise<ActionResult>;
   onCancel: (id: string) => Promise<ActionResult>;
   onReenviar: (id: string) => Promise<ActionResult>;
 }) {
+  const publico = descreverPublico(c, audiences, gruposAtivos);
+
   const detail =
     c.status === 'enviando' && c.resultado
       ? `${c.resultado.enviados}/${c.resultado.total}`
@@ -97,7 +104,7 @@ export function CampaignRow({
       </div>
 
       <div className="text-sm text-ink">
-        Todos <span className="text-xs text-muted">· grupos ativos</span>
+        {publico.titulo} <span className="text-xs text-muted">· {publico.detalhe}</span>
       </div>
 
       <div>
