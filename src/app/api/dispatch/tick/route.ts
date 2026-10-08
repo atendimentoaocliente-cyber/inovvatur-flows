@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { rodarWhatsApp } from '@/lib/dispatch/whatsapp-worker';
 import { Orcamento } from '@/lib/dispatch/ritmo';
+import { motorLigado, origemDoMotor } from '@/lib/dispatch/motor';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,23 +16,6 @@ export const maxDuration = 60;
  * voltam para a fila depois de 15 minutos.
  */
 const ORCAMENTO_MS = 45_000;
-
-/**
- * O relógio do motor de envio pela Evolution.
- *
- * ⚠️ NASCE DESLIGADO, e isso é proposital. Enquanto o n8n + Z-API forem quem envia,
- * ligar isto aqui seria destrutivo: `promoverCampanhas` pega as campanhas `agendada`
- * vencidas e muda para `enviando`, roubando-as do n8n — que nunca mais as veria. Sem
- * nenhuma conexão cadastrada, cada uma viraria `erro` e o disparo simplesmente pararia.
- *
- * Por isso a virada é um ato deliberado (definir MOTOR_WHATSAPP=1), nunca um efeito
- * colateral de um deploy. Desligar de volta é igualmente imediato: basta remover a
- * variável — a fila fica no banco, intacta, e o tick seguinte continua de onde parou.
- */
-function motorLigado(): boolean {
-  const v = (process.env.MOTOR_WHATSAPP ?? '').trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'on';
-}
 
 async function executar(req: Request) {
   const secret = (process.env.CRON_SECRET ?? '').trim();
@@ -50,7 +34,11 @@ async function executar(req: Request) {
     return NextResponse.json({
       ok: true,
       motor: 'desligado',
-      detalhe: 'Defina MOTOR_WHATSAPP=1 para ativar. Quem envia hoje é o n8n + Z-API.',
+      origem: origemDoMotor(),
+      detalhe:
+        origemDoMotor() === 'codigo'
+          ? 'Desligado no código (lib/dispatch/motor.ts). Quem envia hoje é o n8n + Z-API.'
+          : 'Desligado pela variável MOTOR_WHATSAPP. Quem envia hoje é o n8n + Z-API.',
     });
   }
 

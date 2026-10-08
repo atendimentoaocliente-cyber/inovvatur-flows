@@ -119,6 +119,11 @@ function NovaCampanha() {
   const [audiences, setAudiences] = useState<Audience[]>([]);
   // Conexões da Evolution. Vazio = só existe o motor antigo, e o seletor nem aparece.
   const [conexoes, setConexoes] = useState<Connection[]>([]);
+  // O motor novo está ligado? Sem isso o campo "Enviar por" é uma armadilha: escolher
+  // um número grava connection_id, o n8n passa a ignorar a campanha (filtro
+  // connection_id=is.null) e o motor desligado não a pega. Ela morre em silêncio —
+  // aconteceu em 08/10 com um aviso de aula que não saiu.
+  const [motorLigado, setMotorLigado] = useState(false);
   // Nulo = n8n + Z-API (o padrão de sempre). Com um id, a campanha vira do motor novo.
   const [conexaoId, setConexaoId] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -136,10 +141,11 @@ function NovaCampanha() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [audRes, grpRes, cnxRes] = await Promise.allSettled([
+      const [audRes, grpRes, cnxRes, motorRes] = await Promise.allSettled([
         fetch('/api/audiences'),
         fetch('/api/groups'),
         fetch('/api/connections'),
+        fetch('/api/dispatch/tick/estado'),
       ]);
       if (!alive) return;
       if (audRes.status === 'fulfilled' && audRes.value.ok) {
@@ -147,6 +153,10 @@ function NovaCampanha() {
       }
       if (grpRes.status === 'fulfilled' && grpRes.value.ok) {
         setGroups(((await grpRes.value.json().catch(() => [])) as Group[]) ?? []);
+      }
+      if (motorRes.status === 'fulfilled' && motorRes.value.ok) {
+        const m = await motorRes.value.json().catch(() => null);
+        setMotorLigado(m?.ligado === true);
       }
       if (cnxRes.status === 'fulfilled' && cnxRes.value.ok) {
         // /api/connections responde { conexoes, configurada } — não uma lista pura como
@@ -540,7 +550,7 @@ function NovaCampanha() {
 
           {/* Só aparece quando existe conexão conectada. Enquanto o motor novo estiver
               em teste, o padrão continua sendo o de sempre — escolher é opt-in. */}
-          {conectadas.length > 0 && (
+          {motorLigado && conectadas.length > 0 && (
             <Field
               label="Enviar por"
               hint="· em teste — o padrão continua sendo o motor atual"
