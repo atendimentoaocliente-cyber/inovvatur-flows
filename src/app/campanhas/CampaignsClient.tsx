@@ -32,10 +32,12 @@ export function CampaignsClient({
   initial,
   audiences = [],
   gruposAtivos = 0,
+  midiasQuebradas = [],
 }: {
   initial: Campaign[];
   audiences?: Audience[];
   gruposAtivos?: number;
+  midiasQuebradas?: string[];
 }) {
   const [cat, setCat] = useState<CatTab>('todas');
   const [tab, setTab] = useState<Tab>('agendadas');
@@ -220,6 +222,7 @@ export function CampaignsClient({
                 c={c}
                 audiences={audiences}
                 gruposAtivos={gruposAtivos}
+                midiaQuebrada={midiasQuebradas.includes(c.id)}
                 onDelete={handleDelete}
                 onCancel={(id) => handleSetStatus(id, 'cancelada')}
                 onReenviar={(id) => handleSetStatus(id, 'agendada')}

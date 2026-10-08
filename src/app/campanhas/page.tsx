@@ -1,5 +1,6 @@
 import { createServerClient } from '@/lib/supabase/server';
 import type { Audience, Campaign } from '@/lib/types';
+import { conferirMidias } from '@/lib/midia-viva';
 import { CampaignsClient } from './CampaignsClient';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +15,15 @@ export default async function CampanhasPage() {
     supabase.from('groups').select('id', { count: 'exact', head: true }).eq('ativo', true),
   ]);
 
+  // Arquivo apagado do bucket depois do agendamento faz a campanha sair "com sucesso"
+  // sem entregar nada. Conferir aqui é o que transforma esse silêncio em aviso.
+  const { quebradas } = await conferirMidias(
+    (data ?? []) as { id: string; status: string; midia_url: string | null }[],
+  );
+
   return (
     <CampaignsClient
+      midiasQuebradas={quebradas}
       initial={(data ?? []) as Campaign[]}
       audiences={(audiences ?? []) as Audience[]}
       gruposAtivos={count ?? 0}

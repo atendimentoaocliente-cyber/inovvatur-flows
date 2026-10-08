@@ -46,6 +46,7 @@ export function CampaignRow({
   c,
   audiences = [],
   gruposAtivos = 0,
+  midiaQuebrada = false,
   onDelete,
   onCancel,
   onReenviar,
@@ -53,6 +54,7 @@ export function CampaignRow({
   c: Campaign;
   audiences?: Audience[];
   gruposAtivos?: number;
+  midiaQuebrada?: boolean;
   onDelete: (id: string) => Promise<ActionResult>;
   onCancel: (id: string) => Promise<ActionResult>;
   onReenviar: (id: string) => Promise<ActionResult>;
@@ -95,6 +97,12 @@ export function CampaignRow({
             </span>
           </div>
           <div className="mt-0.5 truncate text-xs text-muted">{meta}</div>
+          {midiaQuebrada && (
+            <div className="mt-1 text-xs font-semibold text-[#ffb183]" role="alert">
+              ⚠️ A imagem desta campanha não existe mais — ela vai sair sem a mídia, ou
+              não chegar. Edite e envie o arquivo de novo.
+            </div>
+          )}
         </div>
       </div>
 
