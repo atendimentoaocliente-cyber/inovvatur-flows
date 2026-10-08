@@ -4,6 +4,7 @@ import { readJson } from '@/lib/http';
 import { isCategoria } from '@/lib/categories';
 import {
   computeStepEnviarEm,
+  midiaDoPasso,
   renderTemplate,
   formatHora,
   formatData,
@@ -18,6 +19,8 @@ interface Aula {
   data: string;
   hora: string;
   tema: string;
+  /** Arte desta aula. Substitui a mídia dos passos de imagem; vazio = usa a do roteiro. */
+  midia_url: string | null;
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -48,7 +51,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const aulas: Aula[] = rawAulas.map((raw, i) => {
-    const a = (raw ?? {}) as { data?: unknown; hora?: unknown; tema?: unknown };
+    const a = (raw ?? {}) as {
+      data?: unknown;
+      hora?: unknown;
+      tema?: unknown;
+      midia_url?: unknown;
+    };
     const data = typeof a.data === 'string' ? a.data : '';
     const hora = typeof a.hora === 'string' ? a.hora : '';
     const tema = typeof a.tema === 'string' ? a.tema.trim() : '';
@@ -61,7 +69,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!tema) {
       errors.push({ field: `aulas[${i}].tema`, message: 'Informe o tema da aula.' });
     }
-    return { data, hora, tema };
+    return {
+      data,
+      hora,
+      tema,
+      midia_url: typeof a.midia_url === 'string' && a.midia_url ? a.midia_url : null,
+    };
   });
   if (errors.length) return NextResponse.json({ errors }, { status: 400 });
 
@@ -109,7 +122,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         tipo: step.tipo,
         categoria,
         mensagem: renderTemplate(step.mensagem, vars),
-        midia_url: step.midia_url,
+        midia_url: midiaDoPasso(step, aula.midia_url),
         mencionar_todos: step.mencionar_todos,
         audience_id: audienceId,
         group_ids: groupIds,

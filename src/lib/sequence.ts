@@ -91,3 +91,22 @@ export function computeStepEnviarEm(
   d.setTime(d.getTime() + (step.offset_min ?? 0) * 60000);
   return d.toISOString();
 }
+
+/**
+ * A mídia que o passo deve usar neste disparo.
+ *
+ * O roteiro guarda a mídia FIXA de cada passo, mas na Academy a arte muda toda semana:
+ * são 6 passos de imagem no roteiro, e trocar a arte significava editar o roteiro e
+ * subir o mesmo arquivo seis vezes. Agora a arte é escolhida ao agendar a aula.
+ *
+ * A substituição é só nos passos de IMAGEM, de propósito: o passo de vídeo mantém o
+ * vídeo do roteiro (é outro arquivo e outra natureza), e os de texto continuam sem
+ * mídia. Trocar tudo pela imagem transformaria o vídeo da aula numa foto sem avisar.
+ */
+export function midiaDoPasso(
+  step: Pick<SequenceStep, 'tipo' | 'midia_url'>,
+  imagemDaAula?: string | null,
+): string | null {
+  if (step.tipo === 'imagem' && imagemDaAula) return imagemDaAula;
+  return step.midia_url ?? null;
+}

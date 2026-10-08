@@ -12,12 +12,14 @@ import { Field, SegButton, inputCls } from '@/components/ui';
 import { CATEGORIAS, categoriaLabel, type CategoriaKey } from '@/lib/categories';
 import {
   computeStepEnviarEm,
+  midiaDoPasso,
   renderTemplate,
   formatHora,
   formatData,
   diaSemana,
 } from '@/lib/sequence';
 import { formatWhen } from '@/lib/format';
+import { uploadMedia } from '@/lib/upload-client';
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HORA_RE = /^\d{2}:\d{2}$/;
@@ -34,17 +36,31 @@ interface AulaRow {
   data: string;
   hora: string;
   tema: string;
+  /** Arte desta aula: entra no lugar da imagem fixa do roteiro nos passos de imagem. */
+  midiaUrl: string | null;
+  midiaNome: string | null;
+  subindo: boolean;
 }
 
 interface StepPreview {
   step: SequenceStep;
+  /** Mídia efetiva deste disparo (arte da aula quando houver). */
+  midia?: string | null;
   enviarEm: string;
   past: boolean;
   mensagem: string;
 }
 
 function newAulaRow(): AulaRow {
-  return { id: crypto.randomUUID(), data: '', hora: '19:00', tema: '' };
+  return {
+    id: crypto.randomUUID(),
+    data: '',
+    hora: '19:00',
+    tema: '',
+    midiaUrl: null,
+    midiaNome: null,
+    subindo: false,
+  };
 }
 
 export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
@@ -114,7 +130,25 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
     });
   }
 
-  function updateAula(id: string, patch: Partial<Pick<AulaRow, 'data' | 'hora' | 'tema'>>) {
+  async function trocarArte(id: string, file: File) {
+    setAulas((prev) => prev.map((a) => (a.id === id ? { ...a, subindo: true } : a)));
+    const out = await uploadMedia(file);
+    setAulas((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? 'url' in out
+            ? { ...a, subindo: false, midiaUrl: out.url, midiaNome: file.name }
+            : { ...a, subindo: false }
+          : a,
+      ),
+    );
+    if (!('url' in out)) setSubmitError(out.error);
+  }
+
+  function updateAula(
+    id: string,
+    patch: Partial<Pick<AulaRow, 'data' | 'hora' | 'tema' | 'midiaUrl' | 'midiaNome'>>,
+  ) {
     setAulas((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
     setErrors((e) => {
       let changed = false;
@@ -160,7 +194,15 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
       const items: StepPreview[] = steps.map((step) => {
         const enviarEm = computeStepEnviarEm(row.data, row.hora, step);
         const past = new Date(enviarEm).getTime() <= now;
-        return { step, enviarEm, past, mensagem: renderTemplate(step.mensagem, vars) };
+        return {
+          step,
+          enviarEm,
+          past,
+          mensagem: renderTemplate(step.mensagem, vars),
+          // A prévia tem que mostrar a arte da semana, senão o usuário confere a
+          // imagem errada antes de agendar.
+          midia: midiaDoPasso(step, row.midiaUrl),
+        };
       });
       return { row, dataOk, horaOk, temaOk, filled, items };
     });
@@ -205,7 +247,12 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          aulas: aulas.map((a) => ({ data: a.data, hora: a.hora, tema: a.tema.trim() })),
+          aulas: aulas.map((a) => ({
+            data: a.data,
+            hora: a.hora,
+            tema: a.tema.trim(),
+            midia_url: a.midiaUrl,
+          })),
           categoria,
           audience_id,
           group_ids,
@@ -379,6 +426,49 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
                       </div>
                     )}
                   </div>
+
+                  {/* Arte da semana. Sem ela, valem as imagens fixas do roteiro — por
+                      isso o campo é opcional e diz no rótulo o que acontece. */}
+                  <div className="mt-2">
+                    <label className="block">
+                      <span className="sr-only">Imagem da aula {i + 1}</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void trocarArte(row.id, f);
+                          e.target.value = '';
+                        }}
+                      />
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="block cursor-pointer rounded-xl border border-dashed border-[#2a3550] bg-surface2 px-3 py-2.5 text-center text-[12.5px] text-muted transition-colors hover:border-blue2"
+                      >
+                        {row.subindo ? (
+                          'Enviando imagem…'
+                        ) : row.midiaUrl ? (
+                          <>
+                            <span className="font-semibold text-green">✓ {row.midiaNome}</span>
+                            <span className="ml-1">· clique para trocar</span>
+                          </>
+                        ) : (
+                          <>🖼️ Imagem desta aula <span className="opacity-70">· opcional, substitui a do roteiro</span></>
+                        )}
+                      </span>
+                    </label>
+                    {row.midiaUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateAula(row.id, { midiaUrl: null, midiaNome: null })}
+                        className="mt-1 text-[11.5px] text-muted underline hover:text-ink"
+                      >
+                        usar a imagem do roteiro
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -504,7 +594,7 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
 
                     {isOpen && (
                       <div className="mt-3 flex flex-col gap-2.5">
-                        {items.map(({ step, enviarEm, past: stepPast, mensagem }, i) => (
+                        {items.map(({ step, enviarEm, past: stepPast, mensagem, midia }, i) => (
                           <div
                             key={step.id}
                             className={`rounded-xl border border-border bg-surface2 p-3.5 ${
@@ -525,12 +615,12 @@ export function SequenceDispatchClient({ sequence }: { sequence: Sequence }) {
                             </div>
 
                             <div className="ml-auto max-w-[92%] rounded-[10px] rounded-tr-[2px] bg-[#005c4b] px-2.5 pb-2 pt-1.5 text-[13px] leading-[1.42] text-[#e9edef]">
-                              {step.midia_url && step.tipo !== 'texto' && (
+                              {(midia ?? step.midia_url) && step.tipo !== 'texto' && (
                                 <div className="mb-1.5 overflow-hidden rounded-[7px]">
                                   {step.tipo === 'imagem' ? (
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img
-                                      src={step.midia_url}
+                                      src={midia ?? step.midia_url ?? ''}
                                       alt=""
                                       className="block max-h-40 w-full object-cover"
                                     />

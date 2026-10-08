@@ -6,6 +6,7 @@ import {
   diaSemana,
   shiftDateYMD,
   computeStepEnviarEm,
+  midiaDoPasso,
 } from './sequence';
 import type { SequenceStep } from './types';
 
@@ -110,5 +111,31 @@ describe('computeStepEnviarEm', () => {
   it('relativo +10 crossing midnight (aula 23:55) -> next day = 2026-09-18T03:05:00.000Z', () => {
     const step = baseStep({ dia_offset: 0, hora_tipo: 'relativo', hora_fixa: null, offset_min: 10 });
     expect(computeStepEnviarEm('2026-09-17', '23:55', step)).toBe('2026-09-18T03:05:00.000Z');
+  });
+});
+
+describe('midiaDoPasso — a arte da semana', () => {
+  const passo = (tipo: SequenceStep['tipo'], midia: string | null) =>
+    ({ tipo, midia_url: midia }) as Pick<SequenceStep, 'tipo' | 'midia_url'>;
+
+  it('passo de imagem usa a arte da aula no lugar da do roteiro', () => {
+    expect(midiaDoPasso(passo('imagem', 'roteiro.png'), 'semana.png')).toBe('semana.png');
+  });
+
+  it('vídeo NÃO é trocado pela imagem — são arquivos de naturezas diferentes', () => {
+    expect(midiaDoPasso(passo('video', 'aula.mp4'), 'semana.png')).toBe('aula.mp4');
+  });
+
+  it('texto continua sem mídia', () => {
+    expect(midiaDoPasso(passo('texto', null), 'semana.png')).toBeNull();
+  });
+
+  it('sem arte da semana, vale o que está no roteiro', () => {
+    expect(midiaDoPasso(passo('imagem', 'roteiro.png'), null)).toBe('roteiro.png');
+    expect(midiaDoPasso(passo('imagem', 'roteiro.png'))).toBe('roteiro.png');
+  });
+
+  it('passo de imagem sem nada em lugar nenhum não inventa mídia', () => {
+    expect(midiaDoPasso(passo('imagem', null), '')).toBeNull();
   });
 });
