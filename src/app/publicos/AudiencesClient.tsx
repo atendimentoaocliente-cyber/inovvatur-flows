@@ -22,6 +22,49 @@ export function AudiencesClient({
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Público sendo editado. O mesmo formulário cria e edita: duplicar a lista de grupos
+  // em dois lugares seria duas telas para manter sincronizadas.
+  const [editando, setEditando] = useState<Audience | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  function abrirEdicao(a: Audience) {
+    setEditando(a);
+    setNome(a.nome);
+    setSelected(a.group_ids ?? []);
+    setQuery('');
+    setError(null);
+    setAviso(null);
+    // O formulário fica abaixo da lista; sem isto a pessoa clica em "Editar" e nada
+    // parece acontecer na parte visível da tela.
+    document.getElementById('form-publico')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cancelarEdicao() {
+    setEditando(null);
+    setNome('');
+    setSelected([]);
+    setQuery('');
+    setError(null);
+  }
+
+  async function excluir(a: Audience) {
+    if (!window.confirm(`Excluir o público "${a.nome}"?`)) return;
+    setError(null);
+    setAviso(null);
+    try {
+      const res = await fetch(`/api/audiences/${a.id}`, { method: 'DELETE' });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) {
+        setAuds((xs) => xs.filter((x) => x.id !== a.id));
+        if (editando?.id === a.id) cancelarEdicao();
+        setAviso(`Público "${a.nome}" excluído.`);
+      } else {
+        setError(body.error ?? 'Não foi possível excluir o público.');
+      }
+    } catch {
+      setError('Sem conexão com o servidor. Tente de novo.');
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,18 +83,36 @@ export function AudiencesClient({
   async function save() {
     setSaving(true);
     setError(null);
+    setAviso(null);
     try {
-      const res = await fetch('/api/audiences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, tipo: tipoLabel, group_ids: selected }),
-      });
+      const res = await fetch(
+        editando ? `/api/audiences/${editando.id}` : '/api/audiences',
+        {
+          method: editando ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, tipo: tipoLabel, group_ids: selected }),
+        },
+      );
       if (res.ok) {
-        const a = (await res.json()) as Audience;
-        setAuds([a, ...auds]);
-        setNome('');
-        setSelected([]);
-        setQuery('');
+        const a = (await res.json()) as Audience & { afetadas?: number; recorrencias?: number };
+        if (editando) {
+          setAuds((xs) => xs.map((x) => (x.id === a.id ? a : x)));
+          const n = a.afetadas ?? 0;
+          const r = a.recorrencias ?? 0;
+          // Editar público muda quem recebe o que JÁ está agendado. Isso é o esperado,
+          // mas precisa ser dito: o alcance de campanhas futuras acabou de mudar.
+          setAviso(
+            n || r
+              ? `Público atualizado. ${n} campanha(s) agendada(s) e ${r} recorrência(s) passam a usar esta lista.`
+              : 'Público atualizado.',
+          );
+          cancelarEdicao();
+        } else {
+          setAuds([a, ...auds]);
+          setNome('');
+          setSelected([]);
+          setQuery('');
+        }
       } else {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         setError(body.error ?? 'Não foi possível salvar o público.');
@@ -87,22 +148,51 @@ export function AudiencesClient({
           return (
             <div
               key={a.id}
-              className="rounded-[13px] border border-border bg-surface2 p-4 transition-colors hover:border-blue2/50"
+              className={`rounded-[13px] border bg-surface2 p-4 transition-colors ${
+                editando?.id === a.id ? 'border-blue' : 'border-border hover:border-blue2/50'
+              }`}
             >
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <span aria-hidden="true">{m.icon}</span>
-                <span className="truncate">{a.nome}</span>
+                <span className="min-w-0 flex-1 truncate">{a.nome}</span>
               </div>
               <div className="mt-1.5 text-[12.5px] text-muted">{m.count}</div>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => abrirEdicao(a)}
+                  className="rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-white/5"
+                >
+                  {editando?.id === a.id ? 'Editando…' : 'Editar grupos'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void excluir(a)}
+                  className="rounded-lg border border-border px-2.5 py-1.5 text-[12.5px] font-semibold text-muted transition-colors hover:border-orange/40 hover:text-[#ffb183]"
+                >
+                  Excluir
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* Create new público */}
-      <div className="rounded-xl2 border border-border bg-surface p-[22px]">
-        <div className="mb-4 text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-          Novo público salvo
+      <div id="form-publico" className="rounded-xl2 border border-border bg-surface p-[22px]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+            {editando ? `Editando: ${editando.nome}` : 'Novo público salvo'}
+          </div>
+          {editando && (
+            <button
+              type="button"
+              onClick={cancelarEdicao}
+              className="text-[12.5px] text-muted underline hover:text-ink"
+            >
+              cancelar edição
+            </button>
+          )}
         </div>
 
         <input
@@ -187,13 +277,19 @@ export function AudiencesClient({
             disabled={saving || !nome.trim()}
             className="rounded-xl bg-blue px-5 py-3 text-sm font-semibold text-white shadow-[0_6px_20px_rgba(1,71,255,.35)] transition-colors hover:bg-[#0a54ff] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
           >
-            {saving ? 'Salvando…' : '💾 Salvar público'}
+            {saving ? 'Salvando…' : editando ? '💾 Salvar alterações' : '💾 Salvar público'}
           </button>
         </div>
 
         {error && (
           <p className="mt-3 text-sm text-[#ffb183]" role="alert">
             {error}
+          </p>
+        )}
+
+        {aviso && (
+          <p className="mt-3 text-sm text-[#9cc0ff]" role="status">
+            {aviso}
           </p>
         )}
       </div>
