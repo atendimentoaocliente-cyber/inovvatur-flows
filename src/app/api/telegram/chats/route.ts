@@ -17,7 +17,7 @@ export async function GET() {
     .select('*')
     .order('titulo', { ascending: true });
   if (error) {
-    // Migration 0009 ainda não aplicada: o compositor segue funcionando sem Telegram.
+    // Migration 0026 ainda não aplicada: o compositor segue funcionando sem Telegram.
     return NextResponse.json({ chats: [], conexao_id: null, erro: error.message });
   }
   return NextResponse.json({

@@ -45,7 +45,7 @@ export interface ResultadoTelegram {
 
 let conexaoTelegramCache: string | null = null;
 
-/** A linha de `connections` que representa o bot (migration 0009). */
+/** A linha de `connections` que representa o bot (migration 0026). */
 export async function idDaConexaoTelegram(supabase: SupabaseClient): Promise<string | null> {
   if (conexaoTelegramCache) return conexaoTelegramCache;
   const { data } = await supabase

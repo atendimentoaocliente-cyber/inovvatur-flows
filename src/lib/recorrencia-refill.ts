@@ -123,7 +123,7 @@ export async function sincronizarFuturas(
     if (gradeSet.has(iso)) {
       // Continua valendo: reescreve o conteúdo a partir do molde (nome inclui a data).
       const row = buildRecorrenciaRow(rec, iso);
-      // `k in row`: campo que a linha não tem (Telegram num banco sem a 0009) fica de fora.
+      // `k in row`: campo que a linha não tem (Telegram num banco sem a 0026) fica de fora.
       const patch = Object.fromEntries(
         CAMPOS_SINCRONIZADOS.filter((k) => k in row).map((k) => [k, row[k as keyof typeof row]]),
       );

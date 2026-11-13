@@ -253,7 +253,7 @@ function NovaCampanha() {
   const canalWhatsApp =
     whatsAppEscolhido ?? !(conexaoDaCampanha !== null && conexaoDaCampanha === telegramConexaoId);
 
-  // O Telegram só aparece depois de instalado no banco (migration 0009).
+  // O Telegram só aparece depois de instalado no banco (migration 0026).
   const telegramDisponivel = telegramConexaoId !== null;
 
   function toggleTelegram(id: string) {

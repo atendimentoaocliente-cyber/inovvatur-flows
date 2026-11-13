@@ -52,7 +52,7 @@ export async function promoverCampanhas(
   const { data: vencidas, error } = await supabase
     .from('campaigns')
     // `connections!inner` + provider: campanha só de Telegram também tem conexão (a do
-    // bot), e não é deste motor — ver migration 0009.
+    // bot), e não é deste motor — ver migration 0026.
     .select('*, connections!inner(provider)')
     .eq('connections.provider', 'evolution')
     .eq('status', 'agendada')

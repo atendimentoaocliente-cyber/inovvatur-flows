@@ -42,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const conexao = await idDaConexaoTelegram(supabase);
     if (semWhatsApp) {
       if (!conexao) {
-        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0009).' }, { status: 500 });
+        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0026).' }, { status: 500 });
       }
       linha = { ...value, connection_id: conexao };
     } else if (conexao && (atual as Recorrencia).connection_id === conexao) {

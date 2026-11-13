@@ -91,7 +91,7 @@ export function buildRecorrenciaRow(
     // bot. Sem copiar, a ocorrência nasceria sem conexão — e o n8n, sem grupos
     // marcados, a mandaria para todos os grupos do WhatsApp.
     connection_id: rec.connection_id ?? null,
-    // Só quando a coluna existe (migration 0009): a renovação diária não pode
+    // Só quando a coluna existe (migration 0026): a renovação diária não pode
     // quebrar num banco que ainda não tem o Telegram.
     ...('telegram_chat_ids' in rec
       ? { telegram_chat_ids: rec.telegram_chat_ids && rec.telegram_chat_ids.length ? rec.telegram_chat_ids : null }

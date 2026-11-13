@@ -79,7 +79,7 @@ export function parseRecorrencia(body: Record<string, unknown>): {
       mencionar_todos: Boolean(body.mencionar_todos),
       audience_id: typeof body.audience_id === 'string' ? body.audience_id : null,
       group_ids: groupIds,
-      // Só quando veio (ou já existia no molde): banco sem a 0009 não tem a coluna.
+      // Só quando veio (ou já existia no molde): banco sem a 0026 não tem a coluna.
       ...(telegramIds !== undefined && telegramIds !== false ? { telegram_chat_ids: telegramIds } : {}),
       ativo: body.ativo === undefined ? true : Boolean(body.ativo),
     },

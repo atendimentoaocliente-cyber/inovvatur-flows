@@ -48,14 +48,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const supabase = createServerClient();
 
-  // "Só Telegram" liga e desliga pela conexão do bot (ver migration 0009). Desligar
+  // "Só Telegram" liga e desliga pela conexão do bot (ver migration 0026). Desligar
   // só mexe se a campanha estava NA conexão do bot: uma campanha num número da
   // Evolution continua nele.
   if (typeof patch.sem_whatsapp === 'boolean') {
     const conexaoTelegram = await idDaConexaoTelegram(supabase);
     if (patch.sem_whatsapp) {
       if (!conexaoTelegram) {
-        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0009).' }, { status: 500 });
+        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0026).' }, { status: 500 });
       }
       clean.connection_id = conexaoTelegram;
     } else if (conexaoTelegram) {

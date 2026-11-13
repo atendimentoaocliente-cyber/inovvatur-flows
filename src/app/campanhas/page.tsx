@@ -13,7 +13,7 @@ export default async function CampanhasPage() {
     supabase.from('campaigns').select('*').order('enviar_em', { ascending: true }),
     supabase.from('audiences').select('id,nome,tipo,group_ids'),
     supabase.from('groups').select('id', { count: 'exact', head: true }).eq('ativo', true),
-    // A conexão do bot é o que marca a campanha "só de Telegram" (migration 0009).
+    // A conexão do bot é o que marca a campanha "só de Telegram" (migration 0026).
     supabase.from('connections').select('id').eq('provider', 'telegram').limit(1).maybeSingle(),
   ]);
 

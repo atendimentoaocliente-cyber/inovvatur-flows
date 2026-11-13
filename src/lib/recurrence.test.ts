@@ -118,7 +118,7 @@ describe('buildRecorrenciaRow', () => {
     expect(row.telegram_chat_ids).toEqual(['c1']);
   });
 
-  it('não manda a coluna do Telegram quando o molde não a tem (banco sem a 0009)', () => {
+  it('não manda a coluna do Telegram quando o molde não a tem (banco sem a 0026)', () => {
     const row = buildRecorrenciaRow(REC, '2026-08-31T12:00:00.000Z');
     expect('telegram_chat_ids' in row).toBe(false);
   });

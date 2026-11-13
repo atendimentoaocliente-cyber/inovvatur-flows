@@ -214,7 +214,7 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
             mencionar_todos: mencionar,
             audience_id,
             group_ids,
-            // Só depois de instalado o Telegram: num banco sem a 0009, mandar a
+            // Só depois de instalado o Telegram: num banco sem a 0026, mandar a
             // chave faria toda gravação de recorrência falhar.
             ...(telegramDisponivel
               ? {

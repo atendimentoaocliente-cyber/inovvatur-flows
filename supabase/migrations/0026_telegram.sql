@@ -1,4 +1,8 @@
--- supabase/migrations/0009_telegram.sql
+-- supabase/migrations/0026_telegram.sql
+--
+-- Numerada depois da 0025 do ramo base-sendflow, cujas migrations já estão aplicadas
+-- neste banco (API oficial, e-mail, automações…). É por isso que este arquivo trata
+-- o provider `cloud` e a regra de identidade, que o main ainda não tem.
 --
 -- TELEGRAM COMO CANAL DE ENVIO, AO LADO DO WHATSAPP.
 --
@@ -19,9 +23,28 @@
 --     não a vê — sem isso, ela iria para todos os grupos do WhatsApp.
 
 -- ── a conexão do bot ──────────────────────────────────────────────────────
+-- `cloud` (API oficial da Meta, migration 0019 do base-sendflow) continua valendo.
 alter table public.connections drop constraint if exists connections_provider_check;
 alter table public.connections
-  add constraint connections_provider_check check (provider in ('evolution', 'telegram'));
+  add constraint connections_provider_check check (provider in ('evolution', 'cloud', 'telegram'));
+
+-- A regra "cada tipo de conexão tem o seu identificador" ganha o caso do bot: ele
+-- não tem número nem instância da Evolution. Só onde a regra existe — num banco só
+-- com as migrations do main, nem a coluna phone_number_id existe.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'connections' and column_name = 'phone_number_id'
+  ) then
+    alter table public.connections drop constraint if exists connections_identidade_do_provider;
+    alter table public.connections add constraint connections_identidade_do_provider check (
+      (provider = 'evolution' and instance_name is not null and phone_number_id is null)
+      or (provider = 'cloud' and phone_number_id is not null)
+      or (provider = 'telegram' and phone_number_id is null)
+    );
+  end if;
+end $$;
 
 -- Uma linha só. O token NÃO fica aqui: está na variável TELEGRAM_BOT_TOKEN.
 insert into public.connections (nome, provider, instance_name, status, ativo)

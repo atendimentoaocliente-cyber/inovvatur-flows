@@ -69,13 +69,13 @@ export async function POST(req: Request) {
     connectionId = await idDaConexaoTelegram(supabase);
     if (!connectionId) {
       return NextResponse.json(
-        { error: 'O Telegram ainda não foi instalado no banco (migration 0009).' },
+        { error: 'O Telegram ainda não foi instalado no banco (migration 0026).' },
         { status: 500 },
       );
     }
   }
   // A coluna só vai quando há Telegram: assim, campanha de WhatsApp continua sendo
-  // criada mesmo num banco sem a migration 0009.
+  // criada mesmo num banco sem a migration 0026.
   const rowComConexao = {
     ...row,
     connection_id: connectionId,

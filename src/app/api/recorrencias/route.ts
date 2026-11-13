@@ -25,12 +25,12 @@ export async function POST(req: Request) {
 
   const supabase = createServerClient();
   // Só de Telegram: o molde sai pela conexão do bot, e cada ocorrência herda — é o
-  // que mantém o n8n longe dela (ver migration 0009).
+  // que mantém o n8n longe dela (ver migration 0026).
   let linha: typeof value & { connection_id?: string } = value;
   if (semWhatsApp) {
     const conexao = await idDaConexaoTelegram(supabase);
     if (!conexao) {
-      return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0009).' }, { status: 500 });
+      return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0026).' }, { status: 500 });
     }
     linha = { ...value, connection_id: conexao };
   }
