@@ -51,7 +51,10 @@ export async function promoverCampanhas(
 ): Promise<number> {
   const { data: vencidas, error } = await supabase
     .from('campaigns')
-    .select('*')
+    // `connections!inner` + provider: campanha só de Telegram também tem conexão (a do
+    // bot), e não é deste motor — ver migration 0026.
+    .select('*, connections!inner(provider)')
+    .eq('connections.provider', 'evolution')
     .eq('status', 'agendada')
     // ⚠️ A REGRA QUE PERMITE OS DOIS MOTORES CONVIVEREM: só entra aqui a campanha que
     // escolheu um número na tela. Campanha sem conexão é do n8n + Z-API — inclusive
@@ -389,7 +392,10 @@ export async function fecharCampanhas(
 ): Promise<number> {
   const { data: emVoo } = await supabase
     .from('campaigns')
-    .select('id,nome,atualizado_em')
+    // Só o que é deste motor. Campanha do n8n ou só de Telegram também fica
+    // 'enviando', e sem nenhuma linha em campaign_recipients seria fechada como erro.
+    .select('id,nome,atualizado_em,connections!inner(provider)')
+    .eq('connections.provider', 'evolution')
     .eq('status', 'enviando')
     .limit(100);
   if (!emVoo?.length) return 0;
@@ -458,6 +464,7 @@ export async function rodarWhatsApp(
   const { data: conexoes } = await supabase
     .from('connections')
     .select('*')
+    .eq('provider', 'evolution')
     .eq('ativo', true)
     .eq('status', 'conectada')
     .order('criado_em', { ascending: true });

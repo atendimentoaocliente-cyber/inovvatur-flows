@@ -12,6 +12,9 @@ export async function GET() {
   const { data, error } = await supabase
     .from('connections')
     .select('*')
+    // O bot do Telegram também é uma linha de `connections` (migration 0026), mas
+    // não é número de WhatsApp: não pode aparecer em "Enviar por" nem em Conexões.
+    .eq('provider', 'evolution')
     .order('criado_em', { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ conexoes: data ?? [], configurada: evolutionConfigurada() });

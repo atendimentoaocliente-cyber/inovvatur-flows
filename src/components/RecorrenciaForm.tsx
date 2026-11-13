@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import type { Audience, CampaignType, Group, Recorrencia } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
 import { AudiencePicker, resolveAudience, type AudienceMode } from '@/components/AudiencePicker';
+import { TelegramPicker } from '@/components/TelegramPicker';
+import type { TelegramChat } from '@/lib/telegram/tipos';
 import { Field, SegButton, Switch, inputCls } from '@/components/ui';
 import { CATEGORIAS, type CategoriaKey } from '@/lib/categories';
 import { DIAS_SEMANA_LABEL, describeRecorrencia } from '@/lib/recurrence';
@@ -74,6 +76,14 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(initial?.group_ids ?? []);
   const [groupQuery, setGroupQuery] = useState('');
 
+  // Canais, como na campanha. Sem WhatsApp, o molde sai pela conexão do bot e cada
+  // ocorrência herda — o n8n não enxerga nenhuma delas.
+  const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
+  const [telegramConexaoId, setTelegramConexaoId] = useState<string | null>(null);
+  const [whatsAppEscolhido, setWhatsAppEscolhido] = useState<boolean | null>(null);
+  const [canalTelegram, setCanalTelegram] = useState(Boolean(initial?.telegram_chat_ids?.length));
+  const [selectedTelegramIds, setSelectedTelegramIds] = useState<string[]>(initial?.telegram_chat_ids ?? []);
+
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -82,10 +92,19 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
     let alive = true;
     void (async () => {
       try {
-        const [aRes, gRes] = await Promise.all([fetch('/api/audiences'), fetch('/api/groups')]);
+        const [aRes, gRes, tRes] = await Promise.all([
+          fetch('/api/audiences'),
+          fetch('/api/groups'),
+          fetch('/api/telegram/chats'),
+        ]);
         if (!alive) return;
         if (aRes.ok) setAudiences((await aRes.json()) as Audience[]);
         if (gRes.ok) setGroups((await gRes.json()) as Group[]);
+        if (tRes.ok) {
+          const tg = await tRes.json().catch(() => null);
+          setTelegramChats(Array.isArray(tg?.chats) ? (tg.chats as TelegramChat[]) : []);
+          setTelegramConexaoId(typeof tg?.conexao_id === 'string' ? tg.conexao_id : null);
+        }
       } catch {
         // Sem os públicos/grupos o form ainda funciona no modo "Todos os grupos".
       }
@@ -118,6 +137,18 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
     clearError('midia_url');
   }
 
+  // Derivado em vez de copiado num efeito: a conexão do molde e a do bot chegam
+  // por caminhos diferentes.
+  const canalWhatsApp =
+    whatsAppEscolhido ??
+    !(Boolean(initial?.connection_id) && initial?.connection_id === telegramConexaoId);
+  const telegramDisponivel = telegramConexaoId !== null;
+
+  function toggleTelegram(id: string) {
+    setSelectedTelegramIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    clearError('telegram');
+  }
+
   function toggleGroup(groupId: string) {
     setSelectedGroupIds((s) =>
       s.includes(groupId) ? s.filter((x) => x !== groupId) : [...s, groupId],
@@ -148,12 +179,20 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
       selectedAudienceId,
       selectedGroupIds,
     );
-    if (audienceMode === 'salvo' && !audience_id) {
+    if (!canalWhatsApp && !canalTelegram) {
+      setErrors({ canais: 'Escolha pelo menos um canal: WhatsApp ou Telegram.' });
+      return;
+    }
+    if (canalWhatsApp && audienceMode === 'salvo' && !audience_id) {
       setErrors({ audience: 'Escolha um público salvo.' });
       return;
     }
-    if (audienceMode === 'grupos' && !group_ids) {
+    if (canalWhatsApp && audienceMode === 'grupos' && !group_ids) {
       setErrors({ audience: 'Selecione ao menos um grupo.' });
+      return;
+    }
+    if (canalTelegram && selectedTelegramIds.length === 0) {
+      setErrors({ telegram: 'Marque pelo menos um grupo ou canal do Telegram.' });
       return;
     }
 
@@ -175,6 +214,14 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
             mencionar_todos: mencionar,
             audience_id,
             group_ids,
+            // Só depois de instalado o Telegram: num banco sem a 0026, mandar a
+            // chave faria toda gravação de recorrência falhar.
+            ...(telegramDisponivel
+              ? {
+                  telegram_chat_ids: canalTelegram && selectedTelegramIds.length ? selectedTelegramIds : null,
+                  sem_whatsapp: !canalWhatsApp,
+                }
+              : {}),
           }),
         },
       );
@@ -327,6 +374,32 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
             />
           </Field>
 
+          {telegramDisponivel && (
+            <Field label="Canais" hint="· onde cada ocorrência sai" error={errors.canais}>
+              <div className="flex flex-wrap gap-2">
+                <SegButton
+                  on={canalWhatsApp}
+                  onClick={() => {
+                    setWhatsAppEscolhido(!canalWhatsApp);
+                    clearError('canais');
+                  }}
+                >
+                  WhatsApp
+                </SegButton>
+                <SegButton
+                  on={canalTelegram}
+                  onClick={() => {
+                    setCanalTelegram((v) => !v);
+                    clearError('canais');
+                  }}
+                >
+                  Telegram
+                </SegButton>
+              </div>
+            </Field>
+          )}
+
+          {canalWhatsApp && (
           <Field>
             <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-surface2 px-3.5 py-3">
               <span className="text-sm">
@@ -338,7 +411,9 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
               <Switch checked={mencionar} onChange={setMencionar} label="Mencionar todos" />
             </label>
           </Field>
+          )}
 
+          {canalWhatsApp && (
           <AudiencePicker
             audiences={audiences}
             groups={groups}
@@ -353,6 +428,16 @@ export function RecorrenciaForm({ initial }: { initial?: Recorrencia | null }) {
             error={errors.audience}
             onClearError={() => clearError('audience')}
           />
+          )}
+
+          {canalTelegram && (
+            <TelegramPicker
+              chats={telegramChats}
+              selectedIds={selectedTelegramIds}
+              onToggle={toggleTelegram}
+              error={errors.telegram}
+            />
+          )}
 
           <div className="mt-4 flex gap-2.5 rounded-xl border border-blue2/30 bg-blue/[0.08] px-3.5 py-3 text-[12.5px] text-[#b9c6e6]">
             <span aria-hidden="true">🔄</span>

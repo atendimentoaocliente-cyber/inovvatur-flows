@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { readJson } from '@/lib/http';
 import { isCategoria } from '@/lib/categories';
+import { lerTelegramChatIds } from '@/lib/campaign-row';
+import { idDaConexaoTelegram } from '@/lib/dispatch/telegram-worker';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,13 +34,45 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ errors: [{ field: 'group_ids', message: 'group_ids inválido.' }] }, { status: 400 });
   }
 
+  const telegramIds = lerTelegramChatIds(patch.telegram_chat_ids);
+  if (telegramIds === false) {
+    return NextResponse.json({ errors: [{ field: 'telegram', message: 'Lista de chats do Telegram inválida.' }] }, { status: 400 });
+  }
+
   const allowed = ['nome', 'mensagem', 'midia_url', 'mencionar_todos', 'enviar_em', 'audience_id', 'group_ids', 'tipo', 'categoria'];
   const clean: Record<string, unknown> = {};
   for (const k of allowed) if (k in patch) clean[k] = patch[k];
+  if (telegramIds !== undefined) clean.telegram_chat_ids = telegramIds;
   // Client may cancel, or retry (back to agendada). The dispatcher owns enviando/enviada/erro.
   if (patch.status === 'cancelada' || patch.status === 'agendada') clean.status = patch.status;
 
   const supabase = createServerClient();
+
+  // "Só Telegram" liga e desliga pela conexão do bot (ver migration 0026). Desligar
+  // só mexe se a campanha estava NA conexão do bot: uma campanha num número da
+  // Evolution continua nele.
+  if (typeof patch.sem_whatsapp === 'boolean') {
+    const conexaoTelegram = await idDaConexaoTelegram(supabase);
+    if (patch.sem_whatsapp) {
+      if (!conexaoTelegram) {
+        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0026).' }, { status: 500 });
+      }
+      clean.connection_id = conexaoTelegram;
+    } else if (conexaoTelegram) {
+      const { data: atual } = await supabase.from('campaigns').select('connection_id').eq('id', id).maybeSingle();
+      if ((atual as { connection_id: string | null } | null)?.connection_id === conexaoTelegram) {
+        clean.connection_id = null;
+      }
+    }
+  }
+
+  // Re-armar (agendada de novo) refaz a fila do Telegram: o motor só monta fila de
+  // campanha com `telegram_fila_em` nulo, e o resumo antigo deixaria de valer.
+  const rearmando = clean.status === 'agendada';
+  if (rearmando) {
+    clean.telegram_fila_em = null;
+    clean.telegram_resultado = null;
+  }
   // Atomic guard: never mutate a campaign that is mid-send or already sent. This is what
   // prevents flipping enviando -> agendada/cancelada and re-triggering a duplicate blast.
   const { data, error } = await supabase
@@ -56,8 +90,30 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     );
   }
 
+  // A fila antiga do Telegram: o que falhou ou foi cancelado volta a valer para os
+  // chats que continuam na campanha; o que saiu da lista não sai mais. O que já foi
+  // enviado fica como está — refazer não repete mensagem em quem já recebeu.
+  if (rearmando) {
+    const alvo = (data.telegram_chat_ids as string[] | null) ?? [];
+    await supabase
+      .from('telegram_envios')
+      .update({ status: 'pendente', tentativas: 0, erro: null, liberar_em: null })
+      .eq('campaign_id', id)
+      .in('status', ['falha', 'cancelado'])
+      .in('chat_ref', alvo.length ? alvo : ['00000000-0000-0000-0000-000000000000']);
+    let fora = supabase
+      .from('telegram_envios')
+      .update({ status: 'cancelado' })
+      .eq('campaign_id', id)
+      .in('status', ['pendente', 'falha']);
+    if (alvo.length) fora = fora.not('chat_ref', 'in', `(${alvo.join(',')})`);
+    await fora;
+  }
+
   // Retry re-arms the exact-time scheduler, same fire-and-forget pattern as POST.
-  if (data.status === 'agendada' && process.env.N8N_WEBHOOK_URL) {
+  // Só campanha sem conexão é do n8n: avisar por uma que tem número (ou que é só de
+  // Telegram) faria o n8n mandá-la pela Z-API — e, sem grupos, para todos.
+  if (data.status === 'agendada' && !data.connection_id && process.env.N8N_WEBHOOK_URL) {
     fetch(process.env.N8N_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

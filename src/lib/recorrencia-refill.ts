@@ -15,6 +15,8 @@ const CAMPOS_SINCRONIZADOS = [
   'mencionar_todos',
   'audience_id',
   'group_ids',
+  'connection_id',
+  'telegram_chat_ids',
 ] as const;
 
 /** Normaliza o timestamptz do PostgREST ('…+00:00') para o ISO com Z que geramos. */
@@ -121,7 +123,10 @@ export async function sincronizarFuturas(
     if (gradeSet.has(iso)) {
       // Continua valendo: reescreve o conteúdo a partir do molde (nome inclui a data).
       const row = buildRecorrenciaRow(rec, iso);
-      const patch = Object.fromEntries(CAMPOS_SINCRONIZADOS.map((k) => [k, row[k]]));
+      // `k in row`: campo que a linha não tem (Telegram num banco sem a 0026) fica de fora.
+      const patch = Object.fromEntries(
+        CAMPOS_SINCRONIZADOS.filter((k) => k in row).map((k) => [k, row[k as keyof typeof row]]),
+      );
       const { error } = await supabase.from('campaigns').update(patch).eq('id', c.id);
       if (error) return { criadas: 0, error: error.message };
     } else {

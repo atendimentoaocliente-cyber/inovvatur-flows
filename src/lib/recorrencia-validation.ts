@@ -1,6 +1,7 @@
 import { isCategoria, type CategoriaKey } from './categories';
 import type { ValidationError } from './validation';
 import type { CampaignType } from './types';
+import { lerTelegramChatIds } from './campaign-row';
 
 const TIPOS: CampaignType[] = ['texto', 'imagem', 'video', 'pdf'];
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -16,6 +17,7 @@ export interface RecorrenciaInput {
   mencionar_todos: boolean;
   audience_id: string | null;
   group_ids: string[] | null;
+  telegram_chat_ids?: string[] | null;
   ativo: boolean;
 }
 
@@ -26,6 +28,8 @@ export interface RecorrenciaInput {
 export function parseRecorrencia(body: Record<string, unknown>): {
   value: RecorrenciaInput;
   errors: ValidationError[];
+  /** "Só Telegram" veio no corpo? undefined = não veio (não mexer na conexão). */
+  semWhatsApp: boolean | undefined;
 } {
   const errors: ValidationError[] = [];
 
@@ -54,6 +58,15 @@ export function parseRecorrencia(body: Record<string, unknown>): {
   const groupIds =
     Array.isArray(body.group_ids) && body.group_ids.length ? (body.group_ids as string[]) : null;
 
+  const telegramIds = lerTelegramChatIds(body.telegram_chat_ids);
+  if (telegramIds === false) {
+    errors.push({ field: 'telegram', message: 'Lista de chats do Telegram inválida.' });
+  }
+  const semWhatsApp = typeof body.sem_whatsapp === 'boolean' ? body.sem_whatsapp : undefined;
+  if (semWhatsApp && !(telegramIds && telegramIds.length)) {
+    errors.push({ field: 'telegram', message: 'Sem WhatsApp, escolha pelo menos um grupo ou canal do Telegram.' });
+  }
+
   return {
     value: {
       nome,
@@ -66,8 +79,11 @@ export function parseRecorrencia(body: Record<string, unknown>): {
       mencionar_todos: Boolean(body.mencionar_todos),
       audience_id: typeof body.audience_id === 'string' ? body.audience_id : null,
       group_ids: groupIds,
+      // Só quando veio (ou já existia no molde): banco sem a 0026 não tem a coluna.
+      ...(telegramIds !== undefined && telegramIds !== false ? { telegram_chat_ids: telegramIds } : {}),
       ativo: body.ativo === undefined ? true : Boolean(body.ativo),
     },
     errors,
+    semWhatsApp,
   };
 }

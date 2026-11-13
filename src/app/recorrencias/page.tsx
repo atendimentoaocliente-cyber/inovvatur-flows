@@ -6,7 +6,16 @@ import { RecorrenciasClient, type RecorrenciaItem } from './RecorrenciasClient';
 
 export const dynamic = 'force-dynamic';
 
-function publicoLabel(r: Recorrencia, audiences: Audience[]): string {
+function publicoLabel(r: Recorrencia, audiences: Audience[], conexaoTelegram: string | null): string {
+  const tg = r.telegram_chat_ids?.length ?? 0;
+  const tgTexto = `${tg} chat${tg === 1 ? '' : 's'} do Telegram`;
+  // Só de Telegram: "Todos os grupos ativos" aqui pareceria que vai para o WhatsApp.
+  if (conexaoTelegram && r.connection_id === conexaoTelegram) return `Só Telegram · ${tgTexto}`;
+  const whats = publicoDoWhatsApp(r, audiences);
+  return tg ? `${whats} · + ${tgTexto}` : whats;
+}
+
+function publicoDoWhatsApp(r: Recorrencia, audiences: Audience[]): string {
   if (r.audience_id) {
     const a = audiences.find((x) => x.id === r.audience_id);
     return a ? `Público: ${a.nome}` : 'Público salvo (removido)';
@@ -36,7 +45,7 @@ export default async function RecorrenciasPage() {
     categoria: (isCategoria(r.categoria) ? r.categoria : 'p360') as CategoriaKey,
   }));
 
-  const [{ data: audData }, { data: campData }] = await Promise.all([
+  const [{ data: audData }, { data: campData }, { data: bot }] = await Promise.all([
     supabase.from('audiences').select('*'),
     rows.length
       ? supabase
@@ -47,7 +56,9 @@ export default async function RecorrenciasPage() {
           .gt('enviar_em', new Date().toISOString())
           .order('enviar_em', { ascending: true })
       : Promise.resolve({ data: [] as { recorrencia_id: string; enviar_em: string }[] }),
+    supabase.from('connections').select('id').eq('provider', 'telegram').limit(1).maybeSingle(),
   ]);
+  const conexaoTelegram = (bot as { id: string } | null)?.id ?? null;
 
   const audiences = (audData ?? []) as Audience[];
   const proximasPorRec = new Map<string, string[]>();
@@ -59,7 +70,7 @@ export default async function RecorrenciasPage() {
 
   const items: RecorrenciaItem[] = rows.map((r) => ({
     ...r,
-    publicoLabel: publicoLabel(r, audiences),
+    publicoLabel: publicoLabel(r, audiences, conexaoTelegram),
     proximas: proximasPorRec.get(r.id) ?? [],
   }));
 

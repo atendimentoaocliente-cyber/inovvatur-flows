@@ -43,7 +43,10 @@ describe('promoverCampanhas — a convivência com o n8n', () => {
     const { client, calls } = fakeClient([{ data: [], error: null }]);
     await promoverCampanhas(client, AGORA, []);
 
-    expect(calls.find((c) => c.method === 'eq')?.args).toEqual(['status', 'agendada']);
+    const eqs = calls.filter((c) => c.method === 'eq').map((c) => c.args);
+    expect(eqs).toContainEqual(['status', 'agendada']);
+    // Campanha só de Telegram também tem conexão (a do bot) e não é deste motor.
+    expect(eqs).toContainEqual(['connections.provider', 'evolution']);
     expect(calls.find((c) => c.method === 'lte')?.args).toEqual([
       'enviar_em',
       '2026-09-21T12:00:00.000Z',

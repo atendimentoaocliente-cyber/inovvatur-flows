@@ -68,6 +68,12 @@ export interface Campaign {
   recorrencia_id?: string | null;
   /** Por qual conexão a campanha sai. Nulo = o motor escolhe a primeira conectada. */
   connection_id?: string | null;
+  /** Chats do Telegram (ids de `telegram_chats`). Nulo = nenhum. */
+  telegram_chat_ids?: string[] | null;
+  /** Quando a fila do Telegram foi montada. */
+  telegram_fila_em?: string | null;
+  /** {total, enviados, falhas} só do Telegram. */
+  telegram_resultado?: CampaignResult | null;
   resultado: CampaignResult | null;
   enviado_em: string | null;
   criado_em: string;
@@ -86,6 +92,10 @@ export interface Recorrencia {
   mencionar_todos: boolean;
   audience_id: string | null;
   group_ids: string[] | null;
+  /** Chats do Telegram. Nulo = nenhum. */
+  telegram_chat_ids?: string[] | null;
+  /** A conexão do bot do Telegram aqui = recorrência só de Telegram. */
+  connection_id?: string | null;
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -96,7 +106,7 @@ export type ConnectionStatus = 'desconectada' | 'conectando' | 'conectada' | 'er
 export interface Connection {
   id: string;
   nome: string;
-  provider: 'evolution';
+  provider: 'evolution' | 'telegram';
   /** Nome da instância na Evolution — é o que entra nas rotas /message/sendText/{instance}. */
   instance_name: string;
   numero: string | null;

@@ -9,10 +9,12 @@ export default async function CampanhasPage() {
   const supabase = createServerClient();
   // Os públicos e a contagem de ativos vêm junto porque a coluna "Público" da lista
   // precisa deles para dizer a verdade — antes ela era uma string fixa.
-  const [{ data }, { data: audiences }, { count }] = await Promise.all([
+  const [{ data }, { data: audiences }, { count }, { data: bot }] = await Promise.all([
     supabase.from('campaigns').select('*').order('enviar_em', { ascending: true }),
     supabase.from('audiences').select('id,nome,tipo,group_ids'),
     supabase.from('groups').select('id', { count: 'exact', head: true }).eq('ativo', true),
+    // A conexão do bot é o que marca a campanha "só de Telegram" (migration 0026).
+    supabase.from('connections').select('id').eq('provider', 'telegram').limit(1).maybeSingle(),
   ]);
 
   // Arquivo apagado do bucket depois do agendamento faz a campanha sair "com sucesso"
@@ -27,6 +29,7 @@ export default async function CampanhasPage() {
       initial={(data ?? []) as Campaign[]}
       audiences={(audiences ?? []) as Audience[]}
       gruposAtivos={count ?? 0}
+      conexaoTelegram={(bot as { id: string } | null)?.id ?? null}
     />
   );
 }

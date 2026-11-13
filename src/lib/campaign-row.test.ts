@@ -91,3 +91,31 @@ describe('descreverPublico — a coluna que mentia', () => {
     expect(r.detalhe).toMatch(/15/);
   });
 });
+
+describe('descreverPublico — Telegram', () => {
+  const BOT = 'conexao-do-bot';
+
+  it('só de Telegram não pode aparecer como "Todos"', () => {
+    // Pareceria que vai para todos os grupos do WhatsApp.
+    expect(
+      descreverPublico({ audience_id: null, group_ids: null, connection_id: BOT, telegram_chat_ids: ['a', 'b'] }, [], 15, BOT),
+    ).toEqual({ titulo: '2 chats do Telegram', detalhe: 'só Telegram' });
+  });
+
+  it('WhatsApp e Telegram juntos mostram os dois', () => {
+    expect(
+      descreverPublico({ audience_id: null, group_ids: ['g1'], telegram_chat_ids: ['a'] }, [], 15, BOT),
+    ).toEqual({ titulo: '1 grupo', detalhe: 'escolhidos na campanha · + 1 chat do Telegram' });
+  });
+
+  it('depois do envio, mostra quantos receberam no Telegram', () => {
+    expect(
+      descreverPublico(
+        { audience_id: null, group_ids: null, connection_id: BOT, telegram_chat_ids: ['a', 'b'], telegram_resultado: { total: 2, enviados: 1 } },
+        [],
+        15,
+        BOT,
+      ).detalhe,
+    ).toBe('Telegram: 1/2');
+  });
+});
