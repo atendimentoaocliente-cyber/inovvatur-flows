@@ -12,7 +12,8 @@ export async function abrirConexao(
   supabase: SupabaseClient,
   id: string | null,
 ): Promise<{ conexao: Connection } | { res: NextResponse }> {
-  let q = supabase.from('connections').select('*');
+  // Só número de WhatsApp: o bot do Telegram também mora em `connections`.
+  let q = supabase.from('connections').select('*').eq('provider', 'evolution');
   q = id ? q.eq('id', id) : q.eq('status', 'conectada').order('criado_em', { ascending: true });
   const { data } = await q.limit(1);
   const conexao = (data?.[0] ?? null) as Connection | null;

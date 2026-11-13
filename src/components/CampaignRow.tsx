@@ -46,6 +46,7 @@ export function CampaignRow({
   c,
   audiences = [],
   gruposAtivos = 0,
+  conexaoTelegram = null,
   midiaQuebrada = false,
   onDelete,
   onCancel,
@@ -54,12 +55,13 @@ export function CampaignRow({
   c: Campaign;
   audiences?: Audience[];
   gruposAtivos?: number;
+  conexaoTelegram?: string | null;
   midiaQuebrada?: boolean;
   onDelete: (id: string) => Promise<ActionResult>;
   onCancel: (id: string) => Promise<ActionResult>;
   onReenviar: (id: string) => Promise<ActionResult>;
 }) {
-  const publico = descreverPublico(c, audiences, gruposAtivos);
+  const publico = descreverPublico(c, audiences, gruposAtivos, conexaoTelegram);
 
   const detail =
     c.status === 'enviando' && c.resultado

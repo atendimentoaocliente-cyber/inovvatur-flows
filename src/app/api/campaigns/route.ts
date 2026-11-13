@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { validateCampaign, type CampaignDraft } from '@/lib/validation';
-import { buildCampaignRow } from '@/lib/campaign-row';
+import { buildCampaignRow, lerTelegramChatIds } from '@/lib/campaign-row';
+import { idDaConexaoTelegram } from '@/lib/dispatch/telegram-worker';
 import { readJson } from '@/lib/http';
 
 export async function GET(req: Request) {
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
     audience_id?: unknown;
     group_ids?: unknown;
     connection_id?: unknown;
+    telegram_chat_ids?: unknown;
+    sem_whatsapp?: unknown;
   }>(req);
   if (!parsed.ok) return parsed.res;
   const body = parsed.data;
@@ -40,12 +43,44 @@ export async function POST(req: Request) {
   }
   const row = buildCampaignRow(draft, audienceId, groupIds, new Date(), { asDraft });
 
+  const telegramIds = lerTelegramChatIds(body.telegram_chat_ids);
+  if (telegramIds === false) {
+    return NextResponse.json({ errors: [{ field: 'telegram', message: 'Lista de chats do Telegram inválida.' }] }, { status: 400 });
+  }
+  const semWhatsApp = body.sem_whatsapp === true;
+  if (semWhatsApp && !telegramIds?.length && !asDraft) {
+    return NextResponse.json(
+      { errors: [{ field: 'telegram', message: 'Sem WhatsApp, escolha pelo menos um grupo ou canal do Telegram.' }] },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createServerClient();
+
   // Por qual motor esta campanha sai. Nulo (o padrão) = n8n + Z-API, como sempre foi.
   // Com um número escolhido, ela passa a ser do motor novo — é o opt-in que deixa os
   // dois conviverem durante o mês de teste.
-  const connectionId = typeof body.connection_id === 'string' ? body.connection_id : null;
-  const rowComConexao = { ...row, connection_id: connectionId };
-  const supabase = createServerClient();
+  //
+  // Só de Telegram: sai pela conexão do bot. É o que tira a campanha do alcance do
+  // n8n, que pega toda campanha sem conexão e, sem grupos marcados, manda para
+  // TODOS os grupos do WhatsApp.
+  let connectionId = typeof body.connection_id === 'string' ? body.connection_id : null;
+  if (semWhatsApp) {
+    connectionId = await idDaConexaoTelegram(supabase);
+    if (!connectionId) {
+      return NextResponse.json(
+        { error: 'O Telegram ainda não foi instalado no banco (migration 0009).' },
+        { status: 500 },
+      );
+    }
+  }
+  // A coluna só vai quando há Telegram: assim, campanha de WhatsApp continua sendo
+  // criada mesmo num banco sem a migration 0009.
+  const rowComConexao = {
+    ...row,
+    connection_id: connectionId,
+    ...(telegramIds ? { telegram_chat_ids: telegramIds } : {}),
+  };
   const { data, error } = await supabase.from('campaigns').insert(rowComConexao).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -103,7 +103,24 @@ describe('buildRecorrenciaRow', () => {
       enviar_em: '2026-08-31T12:00:00.000Z',
       status: 'agendada',
       recorrencia_id: 'r1',
+      connection_id: null,
     });
+  });
+
+  it('herda a conexão e os chats do Telegram do molde', () => {
+    // A conexão é o que faz a recorrência só de Telegram sair pelo bot: sem copiar,
+    // a ocorrência cairia no n8n, que manda para todos os grupos do WhatsApp.
+    const row = buildRecorrenciaRow(
+      { ...REC, connection_id: 'bot', telegram_chat_ids: ['c1'] },
+      '2026-08-31T12:00:00.000Z',
+    );
+    expect(row.connection_id).toBe('bot');
+    expect(row.telegram_chat_ids).toEqual(['c1']);
+  });
+
+  it('não manda a coluna do Telegram quando o molde não a tem (banco sem a 0009)', () => {
+    const row = buildRecorrenciaRow(REC, '2026-08-31T12:00:00.000Z');
+    expect('telegram_chat_ids' in row).toBe(false);
   });
 
   it('usa a data de São Paulo no nome, não a UTC', () => {

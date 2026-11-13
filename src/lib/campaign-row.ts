@@ -13,6 +13,25 @@ export interface CampaignRow {
   group_ids: string[] | null;
   enviar_em: string | null;
   status: CampaignStatus;
+  /** Chats do Telegram (ids de `telegram_chats`). Nulo = nenhum. */
+  telegram_chat_ids?: string[] | null;
+  /** Conexão por onde sai. A do bot do Telegram = campanha só de Telegram. */
+  connection_id?: string | null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Lista de chats do Telegram vinda do cliente: só ids válidos, sem repetição.
+ * `undefined` = o campo não veio (não mexer); `null` = veio vazio (nenhum chat).
+ * `false` = veio em formato errado.
+ */
+export function lerTelegramChatIds(v: unknown): string[] | null | undefined | false {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (!Array.isArray(v) || !v.every((x) => typeof x === 'string' && UUID.test(x))) return false;
+  const unicos = [...new Set(v as string[])];
+  return unicos.length ? unicos : null;
 }
 
 export function buildCampaignRow(
@@ -51,6 +70,38 @@ export function buildCampaignRow(
  *   3. nada disso = todos os grupos ativos.
  */
 export function descreverPublico(
+  c: {
+    audience_id: string | null;
+    group_ids: string[] | null;
+    connection_id?: string | null;
+    telegram_chat_ids?: string[] | null;
+    telegram_resultado?: { total: number; enviados: number } | null;
+  },
+  audiences: { id: string; nome: string; tipo: string; group_ids: string[] | null }[],
+  totalAtivos: number,
+  conexaoTelegram: string | null = null,
+): { titulo: string; detalhe: string } {
+  const tg = c.telegram_chat_ids?.length ?? 0;
+  const chats = (n: number) => `${n} chat${n === 1 ? '' : 's'} do Telegram`;
+  // Depois do envio, o que importa é quantos receberam — não quantos estavam marcados.
+  const resumoTg = c.telegram_resultado
+    ? `Telegram: ${c.telegram_resultado.enviados}/${c.telegram_resultado.total}`
+    : `+ ${chats(tg)}`;
+
+  // Só de Telegram (sai pela conexão do bot): dizer "Todos" aqui seria a mentira de
+  // volta, e a pior delas — parece que vai para todos os grupos do WhatsApp.
+  if (conexaoTelegram && c.connection_id === conexaoTelegram) {
+    return {
+      titulo: chats(tg),
+      detalhe: c.telegram_resultado ? resumoTg : 'só Telegram',
+    };
+  }
+
+  const whats = publicoDoWhatsApp(c, audiences, totalAtivos);
+  return tg ? { titulo: whats.titulo, detalhe: `${whats.detalhe} · ${resumoTg}` } : whats;
+}
+
+function publicoDoWhatsApp(
   c: { audience_id: string | null; group_ids: string[] | null },
   audiences: { id: string; nome: string; tipo: string; group_ids: string[] | null }[],
   totalAtivos: number,

@@ -12,6 +12,7 @@ export default async function ConexoesPage() {
   const { data, error } = await supabase
     .from('connections')
     .select('*')
+    .eq('provider', 'evolution')
     .order('criado_em', { ascending: true });
 
   // Migration ainda não aplicada: sem isto a tela diria "nenhuma conexão", escondendo

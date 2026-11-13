@@ -4,6 +4,7 @@ import { readJson } from '@/lib/http';
 import { parseRecorrencia } from '@/lib/recorrencia-validation';
 import { cancelarFuturas, sincronizarFuturas } from '@/lib/recorrencia-refill';
 import type { Recorrencia } from '@/lib/types';
+import { idDaConexaoTelegram } from '@/lib/dispatch/telegram-worker';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,12 +32,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // Toggle de ativo manda só { ativo }; o form manda o molde inteiro. Mesclar com o
   // atual deixa os dois casos passarem pela mesma validação.
-  const { value, errors } = parseRecorrencia({ ...(atual as Record<string, unknown>), ...body });
+  const { value, errors, semWhatsApp } = parseRecorrencia({ ...(atual as Record<string, unknown>), ...body });
   if (errors.length) return NextResponse.json({ errors }, { status: 400 });
+
+  // "Só Telegram" liga e desliga pela conexão do bot. Desligar só tira a conexão se
+  // ela ERA a do bot.
+  let linha: typeof value & { connection_id?: string | null } = value;
+  if (semWhatsApp !== undefined) {
+    const conexao = await idDaConexaoTelegram(supabase);
+    if (semWhatsApp) {
+      if (!conexao) {
+        return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0009).' }, { status: 500 });
+      }
+      linha = { ...value, connection_id: conexao };
+    } else if (conexao && (atual as Recorrencia).connection_id === conexao) {
+      linha = { ...value, connection_id: null };
+    }
+  }
 
   const { data, error } = await supabase
     .from('recorrencias')
-    .update(value)
+    .update(linha)
     .eq('id', id)
     .select()
     .maybeSingle();

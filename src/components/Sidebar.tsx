@@ -30,6 +30,7 @@ const grupos: { titulo: string | null; itens: { href: string; label: string; ico
     titulo: 'Cadastros',
     itens: [
       { href: '/grupos', label: 'Grupos', icon: '👥' },
+      { href: '/telegram', label: 'Telegram', icon: '✈️' },
       { href: '/publicos', label: 'Públicos', icon: '⭐' },
     ],
   },

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Audience, Campaign, CampaignType, Connection, Group } from '@/lib/types';
 import { WhatsAppPreview } from '@/components/WhatsAppPreview';
+import { TelegramPicker } from '@/components/TelegramPicker';
+import type { TelegramChat } from '@/lib/telegram/tipos';
 import { MultiDatePicker, type DateEntry } from '@/components/MultiDatePicker';
 import {
   AudiencePicker,
@@ -129,6 +131,15 @@ function NovaCampanha() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedAudienceId, setSelectedAudienceId] = useState<string | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  // Canais da campanha. WhatsApp ligado é o de sempre; Telegram é opt-in. Sem
+  // WhatsApp, a campanha sai pela conexão do bot — e o n8n não a enxerga.
+  // null = a pessoa ainda não mexeu: vale o que a campanha já era.
+  const [whatsAppEscolhido, setWhatsAppEscolhido] = useState<boolean | null>(null);
+  const [canalTelegram, setCanalTelegram] = useState(false);
+  const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
+  const [telegramConexaoId, setTelegramConexaoId] = useState<string | null>(null);
+  const [selectedTelegramIds, setSelectedTelegramIds] = useState<string[]>([]);
+  const [conexaoDaCampanha, setConexaoDaCampanha] = useState<string | null>(null);
   const [groupQuery, setGroupQuery] = useState('');
 
   const [busy, setBusy] = useState(false);
@@ -141,13 +152,19 @@ function NovaCampanha() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [audRes, grpRes, cnxRes, motorRes] = await Promise.allSettled([
+      const [audRes, grpRes, cnxRes, motorRes, tgRes] = await Promise.allSettled([
         fetch('/api/audiences'),
         fetch('/api/groups'),
         fetch('/api/connections'),
         fetch('/api/dispatch/tick/estado'),
+        fetch('/api/telegram/chats'),
       ]);
       if (!alive) return;
+      if (tgRes.status === 'fulfilled' && tgRes.value.ok) {
+        const tg = await tgRes.value.json().catch(() => null);
+        setTelegramChats(Array.isArray(tg?.chats) ? (tg.chats as TelegramChat[]) : []);
+        setTelegramConexaoId(typeof tg?.conexao_id === 'string' ? tg.conexao_id : null);
+      }
       if (audRes.status === 'fulfilled' && audRes.value.ok) {
         setAudiences(((await audRes.value.json().catch(() => [])) as Audience[]) ?? []);
       }
@@ -214,6 +231,12 @@ function NovaCampanha() {
         } else {
           setAudienceMode('todos');
         }
+
+        if (c.telegram_chat_ids && c.telegram_chat_ids.length) {
+          setCanalTelegram(true);
+          setSelectedTelegramIds(c.telegram_chat_ids);
+        }
+        setConexaoDaCampanha(c.connection_id ?? null);
       } catch {
         if (alive) setSubmitError('Sem conexão com o servidor. Tente de novo.');
       } finally {
@@ -224,6 +247,34 @@ function NovaCampanha() {
       alive = false;
     };
   }, [editId]);
+
+  // Campanha que sai pela conexão do bot é "só Telegram". As duas informações chegam
+  // em fetches separados; derivar (em vez de copiar num efeito) espera as duas.
+  const canalWhatsApp =
+    whatsAppEscolhido ?? !(conexaoDaCampanha !== null && conexaoDaCampanha === telegramConexaoId);
+
+  // O Telegram só aparece depois de instalado no banco (migration 0009).
+  const telegramDisponivel = telegramConexaoId !== null;
+
+  function toggleTelegram(id: string) {
+    setSelectedTelegramIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    clearError('telegram');
+  }
+
+  function errosDeCanal(): Record<string, string> {
+    const e: Record<string, string> = {};
+    if (!canalWhatsApp && !canalTelegram) e.canais = 'Escolha pelo menos um canal: WhatsApp ou Telegram.';
+    if (canalTelegram && selectedTelegramIds.length === 0) {
+      e.telegram = 'Marque pelo menos um grupo ou canal do Telegram.';
+    }
+    return e;
+  }
+
+  // O que a API precisa saber dos canais, igual na criação, na edição e em vários dias.
+  const destinoTelegram = {
+    telegram_chat_ids: canalTelegram && selectedTelegramIds.length ? selectedTelegramIds : null,
+    sem_whatsapp: !canalWhatsApp,
+  };
 
   // Só número conectado pode receber campanha: oferecer um desconectado seria agendar
   // para um envio que falha na hora.
@@ -319,9 +370,10 @@ function NovaCampanha() {
         validateCampaign(draft, new Date()).map((e) => [e.field, e.message]),
       );
       // "Público salvo" needs an actual selection — never silently fall back to "todos".
-      if (audienceMode === 'salvo' && !selectedAudienceId) {
+      if (canalWhatsApp && audienceMode === 'salvo' && !selectedAudienceId) {
         map.audience = 'Escolha um público salvo para continuar.';
       }
+      Object.assign(map, errosDeCanal());
       if (Object.keys(map).length) {
         setErrors(map);
         return;
@@ -346,6 +398,7 @@ function NovaCampanha() {
             enviar_em,
             audience_id,
             group_ids,
+            ...destinoTelegram,
             // Editing is always a (re)schedule: set status so a former rascunho/erro/
             // cancelada gets re-armed on the n8n scheduler when saved.
             status: 'agendada',
@@ -371,7 +424,14 @@ function NovaCampanha() {
       const res = await fetch('/api/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draft, asDraft, audience_id, group_ids, connection_id: conexaoId }),
+        body: JSON.stringify({
+          draft,
+          asDraft,
+          audience_id,
+          group_ids,
+          connection_id: canalWhatsApp ? conexaoId : null,
+          ...destinoTelegram,
+        }),
       });
       if (res.ok) {
         router.push('/campanhas');
@@ -423,9 +483,10 @@ function NovaCampanha() {
         now,
       ).map((e) => [e.field, e.message]),
     );
-    if (audienceMode === 'salvo' && !selectedAudienceId) {
+    if (canalWhatsApp && audienceMode === 'salvo' && !selectedAudienceId) {
       map.audience = 'Escolha um público salvo para continuar.';
     }
+    Object.assign(map, errosDeCanal());
     if (Object.keys(map).length) {
       setErrors(map);
       return;
@@ -478,7 +539,16 @@ function NovaCampanha() {
           const res = await fetch('/api/campaigns', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ draft, asDraft: false, audience_id, group_ids }),
+            // O número escolhido vai junto: sem ele, a campanha de vários dias caía
+            // sempre no n8n, mesmo com "Enviar por" marcado.
+            body: JSON.stringify({
+              draft,
+              asDraft: false,
+              audience_id,
+              group_ids,
+              connection_id: canalWhatsApp ? conexaoId : null,
+              ...destinoTelegram,
+            }),
           });
           if (!res.ok) failures++;
         } catch {
@@ -550,7 +620,37 @@ function NovaCampanha() {
 
           {/* Só aparece quando existe conexão conectada. Enquanto o motor novo estiver
               em teste, o padrão continua sendo o de sempre — escolher é opt-in. */}
-          {motorLigado && conectadas.length > 0 && (
+          {telegramDisponivel && (
+            <Field label="Canais" hint="· onde esta campanha sai" error={errors.canais}>
+              <div className="flex flex-wrap gap-2">
+                <SegButton
+                  on={canalWhatsApp}
+                  onClick={() => {
+                    setWhatsAppEscolhido(!canalWhatsApp);
+                    clearError('canais');
+                  }}
+                >
+                  WhatsApp
+                </SegButton>
+                <SegButton
+                  on={canalTelegram}
+                  onClick={() => {
+                    setCanalTelegram((v) => !v);
+                    clearError('canais');
+                  }}
+                >
+                  Telegram
+                </SegButton>
+              </div>
+              {!canalWhatsApp && canalTelegram && (
+                <p className="mt-2 text-xs text-[#b9c6e6]">
+                  Só Telegram: nenhum grupo do WhatsApp recebe esta campanha.
+                </p>
+              )}
+            </Field>
+          )}
+
+          {canalWhatsApp && motorLigado && conectadas.length > 0 && (
             <Field
               label="Enviar por"
               hint="· em teste — o padrão continua sendo o motor atual"
@@ -646,6 +746,7 @@ function NovaCampanha() {
             />
           </Field>
 
+          {canalWhatsApp && (
           <Field>
             <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border bg-surface2 px-3.5 py-3">
               <span className="text-sm">
@@ -657,8 +758,10 @@ function NovaCampanha() {
               <Switch checked={mencionar} onChange={setMencionar} label="Mencionar todos" />
             </label>
           </Field>
+          )}
 
           {/* AUDIENCE PICKER */}
+          {canalWhatsApp && (
           <AudiencePicker
             audiences={audiences}
             groups={groups}
@@ -673,6 +776,16 @@ function NovaCampanha() {
             error={errors.audience}
             onClearError={() => clearError('audience')}
           />
+          )}
+
+          {canalTelegram && (
+            <TelegramPicker
+              chats={telegramChats}
+              selectedIds={selectedTelegramIds}
+              onToggle={toggleTelegram}
+              error={errors.telegram}
+            />
+          )}
 
           <Field label="Agendamento" error={errors.enviar_em}>
             {!editing && (

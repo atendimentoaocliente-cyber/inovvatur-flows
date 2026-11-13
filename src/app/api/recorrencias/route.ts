@@ -4,6 +4,7 @@ import { readJson } from '@/lib/http';
 import { parseRecorrencia } from '@/lib/recorrencia-validation';
 import { refillRecorrencia } from '@/lib/recorrencia-refill';
 import type { Recorrencia } from '@/lib/types';
+import { idDaConexaoTelegram } from '@/lib/dispatch/telegram-worker';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -19,11 +20,21 @@ export async function POST(req: Request) {
   const parsed = await readJson<Record<string, unknown>>(req);
   if (!parsed.ok) return parsed.res;
 
-  const { value, errors } = parseRecorrencia(parsed.data);
+  const { value, errors, semWhatsApp } = parseRecorrencia(parsed.data);
   if (errors.length) return NextResponse.json({ errors }, { status: 400 });
 
   const supabase = createServerClient();
-  const { data, error } = await supabase.from('recorrencias').insert(value).select().single();
+  // Só de Telegram: o molde sai pela conexão do bot, e cada ocorrência herda — é o
+  // que mantém o n8n longe dela (ver migration 0009).
+  let linha: typeof value & { connection_id?: string } = value;
+  if (semWhatsApp) {
+    const conexao = await idDaConexaoTelegram(supabase);
+    if (!conexao) {
+      return NextResponse.json({ error: 'O Telegram ainda não foi instalado no banco (migration 0009).' }, { status: 500 });
+    }
+    linha = { ...value, connection_id: conexao };
+  }
+  const { data, error } = await supabase.from('recorrencias').insert(linha).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Já materializa o horizonte para a recorrência nova aparecer com datas na lista.
